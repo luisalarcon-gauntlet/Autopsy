@@ -1,6 +1,8 @@
 package analysis
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/yourusername/autopsy/internal/bundle"
@@ -218,6 +220,44 @@ func TestBuildTimelinePromptContainsSchema(t *testing.T) {
 		if !containsStr(prompt, field) {
 			t.Errorf("timeline prompt missing schema field: %s", field)
 		}
+	}
+}
+
+func TestBuildRCAPromptContainsSections(t *testing.T) {
+	data := makeSampleBundleData()
+	prompt := BuildRCAPrompt(data)
+
+	requiredSections := []string{"Root Cause", "Evidence", "Fix Steps", "Prevention"}
+	for _, section := range requiredSections {
+		if !containsStr(prompt, section) {
+			t.Errorf("RCA prompt missing section: %s", section)
+		}
+	}
+}
+
+func TestStreamStubText(t *testing.T) {
+	var buf strings.Builder
+	ctx := context.Background()
+
+	err := streamStubText(ctx, StubRCAText, &buf)
+	if err != nil {
+		t.Fatalf("streamStubText failed: %v", err)
+	}
+
+	got := buf.String()
+	if got != StubRCAText {
+		t.Errorf("streamStubText output mismatch: got %d bytes, want %d bytes", len(got), len(StubRCAText))
+	}
+}
+
+func TestStreamStubTextContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // immediately cancelled
+
+	var buf strings.Builder
+	err := streamStubText(ctx, StubRCAText, &buf)
+	if err == nil {
+		t.Error("expected error from cancelled context, got nil")
 	}
 }
 
