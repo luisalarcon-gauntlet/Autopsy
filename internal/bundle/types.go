@@ -1,5 +1,7 @@
 package bundle
 
+import "time"
+
 // BundleData holds structured data extracted from a Kubernetes support bundle.
 // It is populated by the parser and passed to the analysis pipeline.
 // Fields will be populated fully in Epic 2.
@@ -73,10 +75,13 @@ type NodeSummary struct {
 
 // ClusterEvent represents a Kubernetes Event object.
 type ClusterEvent struct {
+	// Timestamp is the event time, preferring lastTimestamp over firstTimestamp.
+	Timestamp time.Time
+
 	// Namespace is the event's namespace.
 	Namespace string
 
-	// Name is the event name.
+	// Name is the name of the involved object (pod, node, etc.), not the event itself.
 	Name string
 
 	// Kind is the involved object kind (Pod, Node, etc.).

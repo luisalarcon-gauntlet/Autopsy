@@ -3,6 +3,7 @@ package bundle
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 // testdataDir is the path to the shared fixture directory used by all parser tests.
@@ -226,6 +227,104 @@ func TestBuildPodSummary_LastStateOOMKilled(t *testing.T) {
 		t.Errorf("Ready = %q, want %q", summary.Ready, "0/1")
 	}
 }
+
+// --- S2.2: Events parsing ---
+
+func TestParse_Events_Count(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	// Fixture has 5 events; Normal with count<=10 are dropped (Scheduled, count=1).
+	// Normal with count>10 is kept (Pulling, count=15).
+	// So: 3 Warning + 1 high-count Normal = 4 events.
+	if len(data.Events) != 4 {
+		t.Errorf("len(Events) = %d, want 4", len(data.Events))
+	}
+}
+
+func TestParse_Events_ChronologicalOrder(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	for i := 1; i < len(data.Events); i++ {
+		if data.Events[i].Timestamp.Before(data.Events[i-1].Timestamp) {
+			t.Errorf("events[%d] (%v) is before events[%d] (%v) — not sorted",
+				i, data.Events[i].Timestamp, i-1, data.Events[i-1].Timestamp)
+		}
+	}
+}
+
+func TestParse_Events_WarningPresent(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	found := false
+	for _, e := range data.Events {
+		if e.Reason == "BackOff" && e.Name == "payment-processor-6d4b8f9c5-abc12" {
+			found = true
+			if e.Count < 100 {
+				t.Errorf("BackOff event count = %d, want >= 100", e.Count)
+			}
+		}
+	}
+	if !found {
+		t.Error("BackOff warning event for payment-processor not found")
+	}
+}
+
+func TestDeduplicateEvents(t *testing.T) {
+	t0 := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+	t1 := time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)
+
+	events := []ClusterEvent{
+		{Timestamp: t0, Namespace: "default", Name: "pod-a", Reason: "BackOff", Type: "Warning", Count: 10},
+		{Timestamp: t1, Namespace: "default", Name: "pod-a", Reason: "BackOff", Type: "Warning", Count: 5},
+		{Timestamp: t0, Namespace: "default", Name: "pod-b", Reason: "Failed",  Type: "Warning", Count: 3},
+	}
+
+	result := deduplicateEvents(events)
+
+	if len(result) != 2 {
+		t.Fatalf("len(result) = %d, want 2", len(result))
+	}
+
+	// Find the deduped pod-a event.
+	for _, e := range result {
+		if e.Name == "pod-a" {
+			if e.Count != 15 {
+				t.Errorf("pod-a Count = %d, want 15 (10+5)", e.Count)
+			}
+			if !e.Timestamp.Equal(t1) {
+				t.Errorf("pod-a Timestamp = %v, want %v (latest)", e.Timestamp, t1)
+			}
+		}
+	}
+}
+
+func TestParseEventTimestamp_Fallback(t *testing.T) {
+	e := k8sEvent{
+		FirstTimestamp: "2024-01-15T10:00:00Z",
+		LastTimestamp:  "2024-01-15T11:00:00Z",
+	}
+	ts := parseEventTimestamp(e)
+	want := time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)
+	if !ts.Equal(want) {
+		t.Errorf("timestamp = %v, want %v (lastTimestamp preferred)", ts, want)
+	}
+}
+
+func TestParseEventTimestamp_Empty(t *testing.T) {
+	e := k8sEvent{}
+	ts := parseEventTimestamp(e)
+	if !ts.IsZero() {
+		t.Errorf("timestamp = %v, want zero for empty event", ts)
+	}
+}
+
+// --- S2.1 (continued): init container failure ---
 
 func TestBuildPodSummary_InitContainerFailure(t *testing.T) {
 	pod := k8sPod{
