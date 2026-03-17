@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/yourusername/autopsy/internal/analysis"
 	"github.com/yourusername/autopsy/internal/bundle"
 	"github.com/yourusername/autopsy/internal/config"
 	"github.com/yourusername/autopsy/internal/session"
@@ -24,14 +27,28 @@ const (
 
 // Handler holds shared dependencies for all HTTP handlers.
 type Handler struct {
-	cfg   config.Config
-	tmpl  *template.Template
-	store *session.Store
+	cfg    config.Config
+	tmpl   *template.Template
+	store  *session.Store
+	client *anthropic.Client
+	cache  *analysis.Cache
 }
 
-// NewHandler creates a Handler with the given config, parsed templates, and session store.
-func NewHandler(cfg config.Config, tmpl *template.Template, store *session.Store) *Handler {
-	return &Handler{cfg: cfg, tmpl: tmpl, store: store}
+// NewHandler creates a Handler with the given dependencies.
+func NewHandler(
+	cfg config.Config,
+	tmpl *template.Template,
+	store *session.Store,
+	client *anthropic.Client,
+	cache *analysis.Cache,
+) *Handler {
+	return &Handler{
+		cfg:    cfg,
+		tmpl:   tmpl,
+		store:  store,
+		client: client,
+		cache:  cache,
+	}
 }
 
 // HandleIndex serves the upload page.
@@ -49,8 +66,8 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleUpload accepts a multipart upload of a .tar.gz bundle, extracts it
-// to a temp directory, creates a session, and redirects via HTMX to the report page.
+// HandleUpload accepts a multipart upload of a .tar.gz bundle, extracts and
+// parses it, creates a session, and redirects via HTMX to the report page.
 func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	maxBytes := h.cfg.MaxBundleMB * 1024 * 1024
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
@@ -80,7 +97,7 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("bundle upload received", "filename", name, "size_bytes", header.Size)
 
-	// Buffer the file so we can both hash it and extract it.
+	// Buffer the file so we can hash it and extract it.
 	fileBytes, err := io.ReadAll(file)
 	if err != nil {
 		slog.Error("failed to read upload", "filename", name, "err", err)
@@ -99,10 +116,19 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse the bundle contents immediately so SSE handlers have data ready.
+	bundleData, err := bundle.Parse(r.Context(), tmpDir)
+	if err != nil {
+		// Non-fatal: SSE handlers will use an empty BundleData in stub mode,
+		// or show an error partial in live mode.
+		slog.Warn("bundle parse returned error", "filename", name, "err", err)
+	}
+
 	sess := h.store.New(tmpDir)
 	sess.BundleSHA256 = bundleSHA256
+	sess.BundleData = bundleData
 	h.store.Set(sess.ID, sess)
-	slog.Info("session created", "sessionID", sess.ID, "bundleDir", tmpDir, "sha256_prefix", bundleSHA256[:8])
+	slog.Info("session created", "sessionID", sess.ID, "sha256_prefix", bundleSHA256[:8])
 
 	w.Header().Set("HX-Redirect", "/report/"+sess.ID)
 	w.WriteHeader(http.StatusOK)
@@ -133,7 +159,261 @@ func (h *Handler) HandleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok","service":"autopsy"}`))
 }
 
-// jsonError writes a JSON error body with the given status code.
+// HandleTriageSSE streams Phase 1 (triage) analysis results via SSE.
+// It checks the cache first and only calls Claude if necessary.
+// The rendered risk_card HTML partial is sent as the "triage-update" event.
+func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	sse, err := NewSSEWriter(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Check analysis cache (keyed by bundle SHA256).
+	var triageResult *analysis.TriageResult
+	if cached, hit := h.cache.Get(sess.BundleSHA256); hit && cached.Triage != nil {
+		slog.Info("triage cache hit", "sha256_prefix", sess.BundleSHA256[:8])
+		triageResult = cached.Triage
+	} else {
+		slog.Info("triage cache miss, running analysis", "sha256_prefix", sess.BundleSHA256[:8])
+		data := bundleDataOrEmpty(sess)
+		result, runErr := analysis.RunTriage(ctx, h.client, data, h.cfg.StubMode)
+		if runErr != nil {
+			select {
+			case <-ctx.Done():
+				return // client disconnected — goroutine exits
+			default:
+			}
+			slog.Error("triage analysis failed", "err", runErr)
+			sendErrorPartial(sse, "triage-update", "Analysis unavailable — "+runErr.Error())
+			sse.SendEvent("done", "{}")
+			return
+		}
+		triageResult = result
+		h.upsertCache(sess.BundleSHA256, func(c *analysis.CachedResult) {
+			c.Triage = triageResult
+		})
+	}
+
+	var buf bytes.Buffer
+	if err := h.tmpl.ExecuteTemplate(&buf, "risk_card", triageResult); err != nil {
+		slog.Error("failed to render risk_card template", "err", err)
+		sendErrorPartial(sse, "triage-update", "Failed to render results")
+	} else {
+		if err := sse.SendHTML("triage-update", buf.String()); err != nil {
+			slog.Warn("triage SSE send failed (client disconnected?)", "err", err)
+			return
+		}
+	}
+
+	sse.SendEvent("done", "{}")
+}
+
+// HandleTimelineSSE streams Phase 2 (timeline) analysis results via SSE.
+// The rendered timeline HTML partial is sent as the "timeline-update" event.
+func (h *Handler) HandleTimelineSSE(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	sse, err := NewSSEWriter(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+
+	var timelineResult *analysis.TimelineResult
+	if cached, hit := h.cache.Get(sess.BundleSHA256); hit && cached.Timeline != nil {
+		slog.Info("timeline cache hit", "sha256_prefix", sess.BundleSHA256[:8])
+		timelineResult = cached.Timeline
+	} else {
+		slog.Info("timeline cache miss, running analysis", "sha256_prefix", sess.BundleSHA256[:8])
+		data := bundleDataOrEmpty(sess)
+		result, runErr := analysis.RunTimeline(ctx, h.client, data, h.cfg.StubMode)
+		if runErr != nil {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			slog.Error("timeline analysis failed", "err", runErr)
+			sendErrorPartial(sse, "timeline-update", "Analysis unavailable — "+runErr.Error())
+			sse.SendEvent("done", "{}")
+			return
+		}
+		timelineResult = result
+		h.upsertCache(sess.BundleSHA256, func(c *analysis.CachedResult) {
+			c.Timeline = timelineResult
+		})
+	}
+
+	var buf bytes.Buffer
+	if err := h.tmpl.ExecuteTemplate(&buf, "timeline", timelineResult); err != nil {
+		slog.Error("failed to render timeline template", "err", err)
+		sendErrorPartial(sse, "timeline-update", "Failed to render results")
+	} else {
+		if err := sse.SendHTML("timeline-update", buf.String()); err != nil {
+			slog.Warn("timeline SSE send failed (client disconnected?)", "err", err)
+			return
+		}
+	}
+
+	sse.SendEvent("done", "{}")
+}
+
+// HandleRCASSE streams Phase 3 (RCA) analysis results via SSE.
+// Text chunks are sent as "rca-chunk" events; a final "done" event signals completion.
+// Context cancellation (client disconnect) stops streaming immediately.
+func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	sse, err := NewSSEWriter(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Check cache — if RCA text is cached, stream it in chunks to simulate
+	// streaming behaviour and maintain a consistent UI experience.
+	if cached, hit := h.cache.Get(sess.BundleSHA256); hit && cached.RCAText != "" {
+		slog.Info("RCA cache hit, replaying", "sha256_prefix", sess.BundleSHA256[:8])
+		if err := streamTextAsSSE(ctx, sse, cached.RCAText); err != nil {
+			slog.Warn("RCA cache replay interrupted", "err", err)
+			return
+		}
+		sse.SendEvent("done", "{}")
+		return
+	}
+
+	slog.Info("RCA cache miss, running analysis", "sha256_prefix", sess.BundleSHA256[:8])
+
+	// Use a goroutine + channel pattern so we can select on context cancellation.
+	data := bundleDataOrEmpty(sess)
+	rcaWriter := &rcaChunkWriter{sse: sse}
+
+	type rcaResult struct {
+		text string
+		err  error
+	}
+	resultCh := make(chan rcaResult, 1)
+
+	// Accumulate RCA text while streaming it chunk by chunk.
+	var textBuf strings.Builder
+	accumWriter := &accumulatingWriter{delegate: rcaWriter, buf: &textBuf}
+
+	go func() {
+		runErr := analysis.RunRCA(ctx, h.client, data, h.cfg.StubMode, accumWriter)
+		resultCh <- rcaResult{text: textBuf.String(), err: runErr}
+	}()
+
+	select {
+	case <-ctx.Done():
+		slog.Info("RCA SSE client disconnected", "sessionID", sessionID)
+		return // goroutine exits via ctx when RunRCA respects context
+	case res := <-resultCh:
+		if res.err != nil {
+			slog.Error("RCA analysis failed", "err", res.err)
+			sse.SendEvent("rca-error", template.HTMLEscapeString(res.err.Error()))
+			sse.SendEvent("done", "{}")
+			return
+		}
+		// Store completed RCA text in cache.
+		h.upsertCache(sess.BundleSHA256, func(c *analysis.CachedResult) {
+			c.RCAText = res.text
+		})
+	}
+
+	sse.SendEvent("done", "{}")
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+// bundleDataOrEmpty returns the session's parsed BundleData, falling back to
+// an empty struct if parsing failed or hasn't been done yet.
+func bundleDataOrEmpty(sess *session.Session) *bundle.BundleData {
+	if sess.BundleData != nil {
+		return sess.BundleData
+	}
+	return &bundle.BundleData{}
+}
+
+// upsertCache fetches (or creates) a CachedResult for the given SHA256 and
+// applies the mutator function before writing it back to the cache.
+func (h *Handler) upsertCache(sha256 string, mutate func(*analysis.CachedResult)) {
+	cached, ok := h.cache.Get(sha256)
+	if !ok || cached == nil {
+		cached = &analysis.CachedResult{}
+	}
+	mutate(cached)
+	h.cache.Set(sha256, cached)
+}
+
+// sendErrorPartial sends an error HTML fragment as a named SSE event.
+func sendErrorPartial(sse *SSEWriter, event, msg string) {
+	html := `<div class="p-6"><div class="flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-lg">` +
+		`<svg class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">` +
+		`<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>` +
+		`</svg><p class="text-sm text-red-700">` + template.HTMLEscapeString(msg) + `</p></div></div>`
+	sse.SendHTML(event, html)
+}
+
+// streamTextAsSSE sends a cached full text string as individual SSE chunk events
+// by replaying it in fixed-size pieces (same as stub streaming behaviour).
+func streamTextAsSSE(ctx context.Context, sse *SSEWriter, text string) error {
+	const chunkSize = 50
+	runes := []rune(text)
+	for i := 0; i < len(runes); i += chunkSize {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		end := i + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		if err := sse.SendEvent("rca-chunk", string(runes[i:end])); err != nil {
+			return fmt.Errorf("streamTextAsSSE: %w", err)
+		}
+	}
+	return nil
+}
+
+// accumulatingWriter wraps an io.Writer delegate and simultaneously accumulates
+// all written bytes into a strings.Builder for caching after streaming.
+type accumulatingWriter struct {
+	delegate io.Writer
+	buf      *strings.Builder
+}
+
+// Write writes to the delegate and accumulates into the buffer.
+func (a *accumulatingWriter) Write(p []byte) (int, error) {
+	a.buf.Write(p) // strings.Builder.Write never returns an error
+	return a.delegate.Write(p)
+}
+
+// jsonError writes a JSON error body with the given HTTP status code.
 func jsonError(w http.ResponseWriter, msg string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
