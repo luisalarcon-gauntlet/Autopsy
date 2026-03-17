@@ -1,0 +1,26 @@
+services:
+  autopsy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: autopsy:latest
+    container_name: autopsy
+    ports:
+      - "8080:8080"
+    environment:
+      # Pass through from host shell environment.
+      # Set in your shell: export ANTHROPIC_API_KEY=sk-ant-...
+      # Or create a .env file (never commit it).
+      # If unset, app starts in stub mode automatically.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PORT=8080
+      - MAX_BUNDLE_MB=250
+      - STUB_MODE=${STUB_MODE:-false}
+      - SESSION_TTL_MINUTES=30
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
