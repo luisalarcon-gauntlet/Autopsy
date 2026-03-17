@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{block "title" .}}Autopsy{{end}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.0" integrity="sha384-wS5l5IKJBvK6sPTKa2WZ1js3d947pvWXfw7x4icHPnD0XqaYmkPrdUx7jc4x130" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/htmx-ext-sse@2.2.1/sse.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  {{if .StubMode}}
+  <div class="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-700 flex items-center gap-2">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+    </svg>
+    Stub mode — set <code class="font-mono bg-amber-100 px-1 rounded">ANTHROPIC_API_KEY</code> for live analysis
+  </div>
+  {{end}}
+
+  <nav class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 text-gray-900 font-semibold text-lg hover:text-blue-600 transition-colors">
+      <svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      Autopsy
+    </a>
+    <a href="/" class="text-sm text-gray-500 hover:text-gray-900 transition-colors">New Analysis</a>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    {{block "content" .}}{{end}}
+  </main>
+
+  {{block "scripts" .}}{{end}}
+
+</body>
+</html>

@@ -1,0 +1,164 @@
+{{template "layout.html" .}}
+
+{{define "title"}}Autopsy — Analyze Support Bundle{{end}}
+
+{{define "content"}}
+<div class="max-w-2xl mx-auto">
+  <div class="text-center mb-8">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Kubernetes Support Bundle Analyzer</h1>
+    <p class="text-gray-500">Upload a Replicated Troubleshoot bundle to get an AI-powered root cause analysis.</p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Upload Bundle</h2>
+    </div>
+    <div class="p-6">
+      <form id="upload-form"
+            hx-post="/upload"
+            hx-encoding="multipart/form-data"
+            hx-target="#upload-result"
+            hx-swap="innerHTML"
+            hx-indicator="#upload-spinner">
+
+        <input type="file"
+               name="bundle"
+               id="file-input"
+               accept=".tar.gz,.tgz"
+               class="hidden"
+               onchange="handleFileSelect(this)" />
+
+        <div id="drop-zone"
+             class="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+             onclick="document.getElementById('file-input').click()"
+             ondragover="handleDragOver(event)"
+             ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event)">
+          <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p class="text-gray-700 font-medium" id="drop-zone-text">Drop your support bundle here</p>
+          <p class="text-sm text-gray-400 mt-1">.tar.gz or .tgz — up to {{.MaxBundleMB}}MB</p>
+          <p class="text-sm text-blue-600 mt-3 font-medium" id="selected-file-name"></p>
+        </div>
+
+        <div id="client-error" class="mt-3 hidden">
+          <p class="text-sm text-red-600 flex items-center gap-1">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+            </svg>
+            <span id="client-error-text"></span>
+          </p>
+        </div>
+
+        <div class="mt-4 flex items-center gap-3">
+          <button type="submit"
+                  id="submit-btn"
+                  disabled
+                  class="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2.5 text-sm font-medium
+                         hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            Analyze Bundle
+          </button>
+
+          <div id="upload-spinner" class="htmx-indicator flex items-center gap-2 text-sm text-gray-500">
+            <div class="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+            <span>Uploading...</span>
+          </div>
+        </div>
+
+        <div id="progress-container" class="mt-3 hidden">
+          <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-full bg-blue-500 rounded-full transition-all duration-200" style="width: 0%"></div>
+          </div>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <div id="upload-result" class="mt-4"></div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+const MAX_MB = {{.MaxBundleMB}};
+const VALID_EXTS = ['.tar.gz', '.tgz'];
+
+function isValidFile(name) {
+  return VALID_EXTS.some(ext => name.endsWith(ext));
+}
+
+function isValidSize(bytes) {
+  return bytes <= MAX_MB * 1024 * 1024;
+}
+
+function showClientError(msg) {
+  document.getElementById('client-error-text').textContent = msg;
+  document.getElementById('client-error').classList.remove('hidden');
+  document.getElementById('submit-btn').disabled = true;
+}
+
+function clearClientError() {
+  document.getElementById('client-error').classList.add('hidden');
+}
+
+function handleFileSelect(input) {
+  clearClientError();
+  const file = input.files[0];
+  if (!file) return;
+
+  if (!isValidFile(file.name)) {
+    showClientError('Only .tar.gz and .tgz files are accepted.');
+    document.getElementById('selected-file-name').textContent = '';
+    return;
+  }
+  if (!isValidSize(file.size)) {
+    showClientError('File exceeds the ' + MAX_MB + 'MB limit.');
+    document.getElementById('selected-file-name').textContent = '';
+    return;
+  }
+
+  const mb = (file.size / 1024 / 1024).toFixed(1);
+  document.getElementById('selected-file-name').textContent = file.name + ' (' + mb + ' MB)';
+  document.getElementById('submit-btn').disabled = false;
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('border-blue-400', 'bg-blue-50');
+}
+
+function handleDragLeave(e) {
+  document.getElementById('drop-zone').classList.remove('border-blue-400', 'bg-blue-50');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  handleDragLeave(e);
+  const dt = e.dataTransfer;
+  if (dt.files.length > 0) {
+    const input = document.getElementById('file-input');
+    input.files = dt.files;
+    handleFileSelect(input);
+  }
+}
+
+// Upload progress tracking
+document.body.addEventListener('htmx:xhr:progress', function(e) {
+  const pct = e.detail.loaded / e.detail.total * 100;
+  document.getElementById('progress-container').classList.remove('hidden');
+  document.getElementById('progress-bar').style.width = pct + '%';
+});
+
+document.body.addEventListener('htmx:beforeRequest', function(e) {
+  document.getElementById('progress-container').classList.remove('hidden');
+  document.getElementById('progress-bar').style.width = '0%';
+});
+
+document.body.addEventListener('htmx:afterRequest', function(e) {
+  document.getElementById('progress-container').classList.add('hidden');
+});
+</script>
+{{end}}
