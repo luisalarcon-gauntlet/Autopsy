@@ -1,0 +1,71 @@
+{{define "risk_card"}}
+{{- /* Data: *analysis.TriageResult */ -}}
+<div class="p-6 space-y-5">
+
+  {{/* ── Severity score + health badge ── */}}
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="text-5xl font-bold tabular-nums
+        {{if ge .SeverityScore 70}}text-red-600
+        {{else if ge .SeverityScore 40}}text-amber-600
+        {{else}}text-green-600{{end}}">
+        {{.SeverityScore}}
+      </div>
+      <div class="text-xs text-gray-400 mt-0.5 uppercase tracking-wide">Severity score</div>
+    </div>
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
+      {{if eq .ClusterHealth "critical"}}bg-red-100 text-red-700
+      {{else if eq .ClusterHealth "degraded"}}bg-orange-100 text-orange-700
+      {{else if eq .ClusterHealth "warning"}}bg-amber-100 text-amber-700
+      {{else}}bg-green-100 text-green-700{{end}}">
+      {{.ClusterHealth}}
+    </span>
+  </div>
+
+  {{/* ── Summary ── */}}
+  <p class="text-sm text-gray-600 leading-relaxed">{{.Summary}}</p>
+
+  {{/* ── Affected namespaces ── */}}
+  {{if .AffectedNS}}
+  <div>
+    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Affected Namespaces</p>
+    <div class="flex flex-wrap gap-1.5">
+      {{range .AffectedNS}}
+      <span class="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-xs font-mono">{{.}}</span>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  {{/* ── Top issues ── */}}
+  {{if .TopIssues}}
+  <div>
+    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Top Issues</p>
+    <div class="space-y-2">
+      {{range .TopIssues}}
+      <div class="flex items-start gap-3 p-3 rounded-lg border
+        {{if eq .Severity "critical"}}bg-red-50 border-red-100
+        {{else if eq .Severity "high"}}bg-orange-50 border-orange-100
+        {{else if eq .Severity "medium"}}bg-amber-50 border-amber-100
+        {{else}}bg-gray-50 border-gray-100{{end}}">
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium mt-0.5
+          {{if eq .Severity "critical"}}bg-red-100 text-red-700
+          {{else if eq .Severity "high"}}bg-orange-100 text-orange-700
+          {{else if eq .Severity "medium"}}bg-amber-100 text-amber-700
+          {{else}}bg-green-100 text-green-700{{end}}">
+          {{.Severity}}
+        </span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-900 leading-tight">{{.Title}}</p>
+          {{if .AffectedPod}}
+          <p class="text-xs text-gray-500 font-mono mt-0.5 truncate">{{.AffectedPod}}</p>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+</div>
+{{end}}
