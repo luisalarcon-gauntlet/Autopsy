@@ -158,3 +158,25 @@ The demo cluster includes: OOMKilled workload, CrashLoopBackOff, ImagePullBackOf
 Pending pod (32Gi request), and a missing ConfigMap reference.
 
 See `scripts/demo-script.md` for a 2-minute walkthrough script.
+
+---
+
+## Docker Validation
+
+To verify the container works end-to-end:
+
+```bash
+docker-compose down
+docker-compose up --build         # builds and starts the container
+curl http://localhost:8080/healthz # → {"status":"ok","service":"autopsy"}
+```
+
+To check the image is under 30MB and runs as non-root:
+
+```bash
+docker image inspect autopsy:latest --format='{{.Size}}' | awk '{printf "%.1f MB\n", $1/1024/1024}'
+docker exec autopsy whoami  # → autopsy (uid 1001)
+```
+
+Omit `ANTHROPIC_API_KEY` and a yellow stub-mode banner appears — the full UI still works with
+pre-canned responses so reviewers can explore the dashboard without a Claude API key.
