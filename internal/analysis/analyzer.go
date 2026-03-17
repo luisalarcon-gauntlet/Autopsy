@@ -161,6 +161,9 @@ func RunChat(ctx context.Context, client *anthropic.Client, data *bundle.BundleD
 		slog.Warn("chat message over budget", "err", err)
 	}
 
+	// Inject relevant context to keep responses grounded as history grows.
+	groundedMessage := injectContext(message, data)
+
 	messages := make([]anthropic.MessageParam, 0, len(history)+1)
 	for _, h := range history {
 		if h.Role == "user" {
@@ -169,7 +172,7 @@ func RunChat(ctx context.Context, client *anthropic.Client, data *bundle.BundleD
 			messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(h.Content)))
 		}
 	}
-	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(message)))
+	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(groundedMessage)))
 
 	msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaudeSonnet4_5_20250929,
@@ -188,6 +191,16 @@ func RunChat(ctx context.Context, client *anthropic.Client, data *bundle.BundleD
 	}
 
 	return msg.Content[0].Text, nil
+}
+
+// injectContext prepends relevant bundle context to the user message.
+// This keeps responses grounded as history grows long.
+func injectContext(message string, data *bundle.BundleData) string {
+	ctx := FindRelevantContext(message, data)
+	if ctx == "" {
+		return message
+	}
+	return ctx + "\n\nUser question: " + message
 }
 
 // parseTriageJSON unmarshals a Claude JSON response into a TriageResult.
