@@ -2,9 +2,13 @@
 package server
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -76,7 +80,19 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("bundle upload received", "filename", name, "size_bytes", header.Size)
 
-	tmpDir, err := bundle.Extract(r.Context(), file, bundle.MaxTotalSizeBytes)
+	// Buffer the file so we can both hash it and extract it.
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		slog.Error("failed to read upload", "filename", name, "err", err)
+		jsonError(w, "Failed to read uploaded file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sum := sha256.Sum256(fileBytes)
+	bundleSHA256 := hex.EncodeToString(sum[:])
+	slog.Info("bundle SHA256 computed", "sha256_prefix", bundleSHA256[:8])
+
+	tmpDir, err := bundle.Extract(r.Context(), bytes.NewReader(fileBytes), bundle.MaxTotalSizeBytes)
 	if err != nil {
 		slog.Error("bundle extraction failed", "filename", name, "err", err)
 		jsonError(w, "Failed to extract bundle: "+err.Error(), http.StatusUnprocessableEntity)
@@ -84,7 +100,9 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := h.store.New(tmpDir)
-	slog.Info("session created", "sessionID", sess.ID, "bundleDir", tmpDir)
+	sess.BundleSHA256 = bundleSHA256
+	h.store.Set(sess.ID, sess)
+	slog.Info("session created", "sessionID", sess.ID, "bundleDir", tmpDir, "sha256_prefix", bundleSHA256[:8])
 
 	w.Header().Set("HX-Redirect", "/report/"+sess.ID)
 	w.WriteHeader(http.StatusOK)

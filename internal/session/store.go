@@ -20,6 +20,10 @@ type Session struct {
 	// BundleDir is the path to the extracted bundle temp directory.
 	BundleDir string
 
+	// BundleSHA256 is the hex-encoded SHA256 hash of the uploaded .tar.gz bytes.
+	// Used as the cache key for analysis results.
+	BundleSHA256 string
+
 	// BundleData holds the parsed bundle contents. Nil until parsing completes.
 	BundleData *bundle.BundleData
 
