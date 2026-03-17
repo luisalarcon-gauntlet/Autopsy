@@ -169,9 +169,13 @@ func parsePodsFile(path string, data *BundleData) {
 }
 
 // buildPodSummary converts a k8sPod into a PodSummary, extracting the most
-// actionable failure reason from container states. Priority: current state
-// waiting reason → current state terminated reason → last terminated reason.
-// Init container failures are prefixed with "Init:".
+// actionable failure reason from container states. Priority order:
+//  1. Container waiting reason (e.g. CrashLoopBackOff, ImagePullBackOff, CreateContainerConfigError)
+//  2. Container terminated reason (e.g. OOMKilled, Error)
+//  3. Last terminated reason
+//  4. Init container failures (prefixed with "Init:")
+//  5. Pod-level scheduling failure from conditions (e.g. Unschedulable)
+//  6. Pod-level status reason (e.g. for evicted pods)
 func buildPodSummary(pod k8sPod) PodSummary {
 	s := PodSummary{
 		Namespace: pod.Metadata.Namespace,
@@ -202,6 +206,24 @@ func buildPodSummary(pod k8sPod) PodSummary {
 				s.Message = msg
 			}
 		}
+	}
+
+	// For Pending pods with no container statuses, check pod conditions for
+	// scheduling failure (e.g. Insufficient memory, Unschedulable).
+	if s.Reason == "" && pod.Status.Phase == "Pending" {
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == "PodScheduled" && cond.Status == "False" {
+				s.Reason = cond.Reason
+				s.Message = cond.Message
+				break
+			}
+		}
+	}
+
+	// Fall back to pod-level reason (set for evicted pods).
+	if s.Reason == "" && pod.Status.Reason != "" {
+		s.Reason = pod.Status.Reason
+		s.Message = pod.Status.Message
 	}
 
 	if total > 0 {

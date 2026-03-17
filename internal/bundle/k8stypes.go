@@ -25,6 +25,16 @@ type k8sPodStatus struct {
 	Phase                 string               `json:"phase"`
 	ContainerStatuses     []k8sContainerStatus `json:"containerStatuses"`
 	InitContainerStatuses []k8sContainerStatus `json:"initContainerStatuses"`
+	Conditions            []k8sPodCondition    `json:"conditions"`
+	Message               string               `json:"message"`
+	Reason                string               `json:"reason"`
+}
+
+type k8sPodCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
 }
 
 type k8sContainerStatus struct {
