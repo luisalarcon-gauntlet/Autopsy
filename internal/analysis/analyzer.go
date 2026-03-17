@@ -193,6 +193,58 @@ func RunChat(ctx context.Context, client *anthropic.Client, data *bundle.BundleD
 	return msg.Content[0].Text, nil
 }
 
+// RunChatStream streams a chat response token-by-token to w.
+// history must NOT include the new user message — it is passed separately as message.
+// In stub mode it streams a pre-canned response in small chunks to simulate streaming.
+func RunChatStream(ctx context.Context, client *anthropic.Client, data *bundle.BundleData, history []ChatMessage, message string, stubMode bool, w io.Writer) error {
+	if stubMode {
+		return streamStubText(ctx, buildStubChatResponse(message), w)
+	}
+
+	systemPrompt := BuildChatSystemPrompt(data)
+	groundedMessage := injectContext(message, data)
+
+	messages := make([]anthropic.MessageParam, 0, len(history)+1)
+	for _, h := range history {
+		if h.Role == "user" {
+			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(h.Content)))
+		} else {
+			messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(h.Content)))
+		}
+	}
+	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(groundedMessage)))
+
+	stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.ModelClaudeSonnet4_5_20250929,
+		MaxTokens: 2048,
+		System: []anthropic.TextBlockParam{
+			{Text: systemPrompt},
+		},
+		Messages: messages,
+	})
+
+	for stream.Next() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		event := stream.Current()
+		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
+			if _, err := w.Write([]byte(event.Delta.Text)); err != nil {
+				return fmt.Errorf("RunChatStream write: %w", err)
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return classifyAPIError("RunChatStream", err)
+	}
+
+	return nil
+}
+
 // injectContext prepends relevant bundle context to the user message.
 // This keeps responses grounded as history grows long.
 func injectContext(message string, data *bundle.BundleData) string {

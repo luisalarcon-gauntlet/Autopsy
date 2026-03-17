@@ -138,12 +138,7 @@
       </div>
     </div>
     <div class="border-t border-gray-100 p-4">
-      <form id="chat-form"
-            hx-post="/chat/{{.SessionID}}"
-            hx-target="#chat-messages"
-            hx-swap="beforeend"
-            hx-on:htmx:after-request="this.reset(); document.getElementById('chat-messages').scrollTop=999999"
-            class="flex gap-2">
+      <form id="chat-form" class="flex gap-2" onsubmit="return handleChatSubmit(event)">
         <input type="text"
                name="message"
                id="chat-input"
@@ -285,13 +280,105 @@ function addCopyButtons(container) {
   });
 }
 
-// ── Chat auto-scroll and placeholder removal ──────────────────────────────────
-document.body.addEventListener('htmx:afterSwap', function(e) {
-  if (e.detail.target && e.detail.target.id === 'chat-messages') {
-    const ph = document.getElementById('chat-placeholder');
-    if (ph) ph.remove();
-    e.detail.target.scrollTop = e.detail.target.scrollHeight;
-  }
-});
+// ── Chat streaming via native EventSource ─────────────────────────────────────
+const chatSessionID = {{.SessionID | printf "%q"}};
+let chatStreaming = false;
+
+function handleChatSubmit(e) {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg || chatStreaming) return false;
+  sendChatMessage(msg);
+  return false;
+}
+
+function sendChatMessage(msg) {
+  chatStreaming = true;
+  const input  = document.getElementById('chat-input');
+  const submit = document.getElementById('chat-submit');
+  input.disabled  = true;
+  submit.disabled = true;
+  input.value = '';
+
+  const msgs = document.getElementById('chat-messages');
+
+  const ph = document.getElementById('chat-placeholder');
+  if (ph) ph.remove();
+
+  // User bubble.
+  const userBubble = document.createElement('div');
+  userBubble.className = 'flex justify-end mb-3';
+  userBubble.innerHTML = '<div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 max-w-xs text-sm leading-relaxed break-words">' + escHtml(msg) + '</div>';
+  msgs.appendChild(userBubble);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Typing indicator inside assistant bubble.
+  const asstWrap = document.createElement('div');
+  asstWrap.className = 'flex justify-start mb-3';
+  asstWrap.innerHTML =
+    '<div id="chat-asst-bubble" class="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">' +
+    '<span id="chat-typing" class="flex gap-1 items-center" aria-label="Typing">' +
+    '<span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>' +
+    '<span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>' +
+    '<span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:300ms"></span>' +
+    '</span></div>';
+  msgs.appendChild(asstWrap);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  const encoded = encodeURIComponent(msg);
+  const src = new EventSource('/chat/' + chatSessionID + '/stream?message=' + encoded);
+  let buffer = '';
+  let typingRemoved = false;
+
+  src.addEventListener('chat-chunk', function(e) {
+    buffer += e.data;
+    if (!typingRemoved) {
+      typingRemoved = true;
+      const typing = document.getElementById('chat-typing');
+      if (typing) typing.remove();
+    }
+    const bubble = document.getElementById('chat-asst-bubble');
+    if (bubble) bubble.textContent = buffer;
+    msgs.scrollTop = msgs.scrollHeight;
+  });
+
+  src.addEventListener('chat-error', function(e) {
+    const bubble = document.getElementById('chat-asst-bubble');
+    if (bubble) {
+      bubble.textContent = 'Error: ' + e.data;
+      bubble.classList.add('text-red-600');
+    }
+  });
+
+  src.addEventListener('done', function() {
+    src.close();
+    chatStreaming = false;
+    const bubble = document.getElementById('chat-asst-bubble');
+    if (bubble) {
+      bubble.id = '';
+      bubble.innerHTML = renderMarkdown(buffer);
+      addCopyButtons(bubble);
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+    input.disabled  = false;
+    submit.disabled = false;
+    input.focus();
+  });
+
+  src.onerror = function() {
+    src.close();
+    chatStreaming = false;
+    const bubble = document.getElementById('chat-asst-bubble');
+    if (bubble && !buffer) {
+      const typing = document.getElementById('chat-typing');
+      if (typing) typing.remove();
+      bubble.textContent = 'Connection error — please try again.';
+      bubble.classList.add('text-red-600');
+    }
+    input.disabled  = false;
+    submit.disabled = false;
+  };
+}
 </script>
 {{end}}

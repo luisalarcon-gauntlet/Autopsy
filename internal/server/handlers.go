@@ -400,6 +400,81 @@ func (h *Handler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// HandleChatSSE streams a chat response token-by-token via SSE.
+// The message is read from the "message" query parameter.
+// It emits "chat-chunk" events during streaming, then a final "done" event.
+// Context cancellation (client disconnect) stops streaming immediately.
+func (h *Handler) HandleChatSSE(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	message := strings.TrimSpace(r.URL.Query().Get("message"))
+	if message == "" {
+		http.Error(w, "message query param is required", http.StatusBadRequest)
+		return
+	}
+
+	sse, err := NewSSEWriter(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Snapshot history before appending new user turn.
+	history := make([]analysis.ChatMessage, len(sess.ChatHistory))
+	copy(history, sess.ChatHistory)
+
+	// Persist user message immediately so it survives even if stream is interrupted.
+	sess.ChatHistory = append(sess.ChatHistory, analysis.ChatMessage{Role: "user", Content: message})
+	h.store.Set(sessionID, sess)
+
+	data := bundleDataOrEmpty(sess)
+
+	type streamResult struct {
+		text string
+		err  error
+	}
+	resultCh := make(chan streamResult, 1)
+	var textBuf strings.Builder
+	accumWriter := &accumulatingWriter{
+		delegate: &chatChunkWriter{sse: sse},
+		buf:      &textBuf,
+	}
+
+	go func() {
+		runErr := analysis.RunChatStream(ctx, h.client, data, history, message, h.cfg.StubMode, accumWriter)
+		resultCh <- streamResult{text: textBuf.String(), err: runErr}
+	}()
+
+	select {
+	case <-ctx.Done():
+		slog.Info("chat SSE client disconnected", "sessionID", sessionID)
+		return
+	case res := <-resultCh:
+		if res.err != nil {
+			slog.Error("chat stream failed", "sessionID", sessionID, "err", res.err)
+			sse.SendEvent("chat-error", template.HTMLEscapeString(res.err.Error()))
+			sse.SendEvent("done", "{}")
+			return
+		}
+		// Save assistant response to session history.
+		if current, exists := h.store.Get(sessionID); exists {
+			current.ChatHistory = append(current.ChatHistory, analysis.ChatMessage{
+				Role: "assistant", Content: res.text,
+			})
+			h.store.Set(sessionID, current)
+		}
+	}
+
+	sse.SendEvent("done", "{}")
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // bundleDataOrEmpty returns the session's parsed BundleData, falling back to

@@ -85,3 +85,17 @@ func (w *rcaChunkWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// chatChunkWriter implements io.Writer and forwards each Write call as a
+// "chat-chunk" SSE event, bridging analysis.RunChatStream with the SSE stream.
+type chatChunkWriter struct {
+	sse *SSEWriter
+}
+
+// Write sends the given bytes as a single "chat-chunk" SSE event.
+func (w *chatChunkWriter) Write(p []byte) (int, error) {
+	if err := w.sse.SendEvent("chat-chunk", string(p)); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
