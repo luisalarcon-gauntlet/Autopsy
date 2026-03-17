@@ -174,6 +174,53 @@ func TestBuildStubTimelineResult(t *testing.T) {
 	}
 }
 
+func TestParseTimelineJSON(t *testing.T) {
+	sampleJSON := `{
+		"events": [
+			{
+				"relativeTime": "T+0:00",
+				"title": "First failure event",
+				"detail": "Something went wrong with the pod startup.",
+				"severity": "critical",
+				"linkedPod": "payment-processor-7d9f5b8c4-xk2pq"
+			},
+			{
+				"relativeTime": "T+5:00",
+				"title": "Secondary OOM event",
+				"detail": "Worker exceeded memory limit.",
+				"severity": "warning",
+				"linkedPod": "data-ingestion-worker-6b4d9c7f5-m3nrs"
+			}
+		]
+	}`
+
+	result, err := parseTimelineJSON(sampleJSON)
+	if err != nil {
+		t.Fatalf("parseTimelineJSON failed: %v", err)
+	}
+	if len(result.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(result.Events))
+	}
+	if result.Events[0].RelativeTime != "T+0:00" {
+		t.Errorf("expected first event at T+0:00, got %q", result.Events[0].RelativeTime)
+	}
+	if result.Events[0].Severity != "critical" {
+		t.Errorf("expected first event severity=critical, got %q", result.Events[0].Severity)
+	}
+}
+
+func TestBuildTimelinePromptContainsSchema(t *testing.T) {
+	data := makeSampleBundleData()
+	prompt := BuildTimelinePrompt(data)
+
+	requiredFields := []string{"relativeTime", "title", "severity", "linkedPod"}
+	for _, field := range requiredFields {
+		if !containsStr(prompt, field) {
+			t.Errorf("timeline prompt missing schema field: %s", field)
+		}
+	}
+}
+
 func containsStr(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 &&
 		(func() bool {
