@@ -18,6 +18,7 @@ const (
 	maxTriagePromptChars   = 40_000
 	maxTimelinePromptChars = 40_000
 	maxRCAPromptChars      = 60_000
+	maxChatPromptChars     = 20_000
 
 	stubStreamChunkSize = 50
 	stubStreamDelayMS   = 30
@@ -144,6 +145,49 @@ func RunRCA(ctx context.Context, client *anthropic.Client, data *bundle.BundleDa
 	}
 
 	return nil
+}
+
+// RunChat executes a single chat turn and returns the assistant's response.
+// history must NOT include the new user message — it is passed separately as message.
+// In stub mode it returns a pre-canned response after a short delay.
+func RunChat(ctx context.Context, client *anthropic.Client, data *bundle.BundleData, history []ChatMessage, message string, stubMode bool) (string, error) {
+	if stubMode {
+		time.Sleep(300 * time.Millisecond)
+		return buildStubChatResponse(message), nil
+	}
+
+	systemPrompt := BuildChatSystemPrompt(data)
+	if err := checkPromptBudget(message, maxChatPromptChars); err != nil {
+		slog.Warn("chat message over budget", "err", err)
+	}
+
+	messages := make([]anthropic.MessageParam, 0, len(history)+1)
+	for _, h := range history {
+		if h.Role == "user" {
+			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(h.Content)))
+		} else {
+			messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(h.Content)))
+		}
+	}
+	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(message)))
+
+	msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.ModelClaudeSonnet4_5_20250929,
+		MaxTokens: 2048,
+		System: []anthropic.TextBlockParam{
+			{Text: systemPrompt},
+		},
+		Messages: messages,
+	})
+	if err != nil {
+		return "", classifyAPIError("RunChat", err)
+	}
+
+	if len(msg.Content) == 0 {
+		return "", fmt.Errorf("RunChat: empty response from Claude")
+	}
+
+	return msg.Content[0].Text, nil
 }
 
 // parseTriageJSON unmarshals a Claude JSON response into a TriageResult.

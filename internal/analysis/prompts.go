@@ -113,6 +113,55 @@ Produce a structured markdown report with the following sections in order:
 Be specific. Reference actual pod names, namespaces, and error messages from the bundle.`, string(dataJSON))
 }
 
+// ChatSystemPrompt instructs Claude to stay grounded in the provided bundle context.
+const ChatSystemPrompt = `You are an expert Kubernetes SRE analyzing a specific support bundle.
+Only reference information that appears in the bundle data provided.
+If asked about something not in the bundle, say "I don't see that in this bundle."
+Be concise and actionable. When providing remediation steps, include exact kubectl commands.`
+
+// buildChatBundleContext returns a compact (<2000 char) summary of BundleData
+// suitable for injecting into the chat system prompt.
+func buildChatBundleContext(data *bundle.BundleData) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Cluster version: %s\n", data.ClusterVersion)
+	fmt.Fprintf(&sb, "Nodes: %d\n", len(data.NodeSummaries))
+
+	issueCount := 0
+	fmt.Fprintf(&sb, "Pods with issues:\n")
+	for _, p := range data.PodSummaries {
+		if (p.Reason != "" || p.RestartCount > 0) && issueCount < 15 {
+			fmt.Fprintf(&sb, "  - %s/%s: phase=%s reason=%s restarts=%d\n",
+				p.Namespace, p.Name, p.Phase, p.Reason, p.RestartCount)
+			issueCount++
+		}
+	}
+
+	eventCount := 0
+	fmt.Fprintf(&sb, "Warning events:\n")
+	for _, e := range data.Events {
+		if e.Type == "Warning" && eventCount < 10 {
+			msg := e.Message
+			if len(msg) > 100 {
+				msg = msg[:100] + "..."
+			}
+			fmt.Fprintf(&sb, "  - [%s] %s: %s\n", e.Namespace, e.Reason, msg)
+			eventCount++
+		}
+	}
+
+	result := sb.String()
+	if len(result) > 2000 {
+		result = result[:2000] + "\n...(truncated)"
+	}
+	return result
+}
+
+// BuildChatSystemPrompt creates the full system prompt for a chat turn,
+// embedding a compact bundle context to ground responses.
+func BuildChatSystemPrompt(data *bundle.BundleData) string {
+	return fmt.Sprintf("%s\n\nBundle context:\n%s", ChatSystemPrompt, buildChatBundleContext(data))
+}
+
 // extractJSONFromMarkdown strips markdown code fences from a string that may
 // wrap JSON in ` + "```" + `json ... ` + "```" + ` or plain ` + "```" + ` ... ` + "```" + ` blocks.
 func extractJSONFromMarkdown(s string) string {

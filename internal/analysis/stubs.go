@@ -1,6 +1,26 @@
 // Package analysis provides the multi-phase AI analysis pipeline for Autopsy.
 package analysis
 
+import "strings"
+
+// buildStubChatResponse returns a contextual stub response for the given message.
+// It uses keyword matching to return the most relevant pre-canned answer.
+func buildStubChatResponse(message string) string {
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "oom") || strings.Contains(lower, "memory"):
+		return "The `data-ingestion-worker` (namespace: data-pipeline) is being OOMKilled because it exceeds its 256Mi memory limit. The batch size was increased from 500 to 5000 records in v2.3.1 without a corresponding memory increase.\n\nFix: `kubectl patch deployment data-ingestion-worker -n data-pipeline --type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/resources/limits/memory\",\"value\":\"512Mi\"}]'`"
+	case strings.Contains(lower, "crash") || strings.Contains(lower, "payment"):
+		return "The `payment-processor-7d9f5b8c4-xk2pq` pod is in CrashLoopBackOff due to a nil pointer dereference in `pkg/db/pool.go:47`. The `DB_HOST` env var is not set, so the DB connection pool fails on init.\n\nFix: `kubectl set env deployment/payment-processor DB_HOST=postgres-service.payments.svc.cluster.local -n payments`"
+	case strings.Contains(lower, "image") || strings.Contains(lower, "redis"):
+		return "The `redis-cache-canary` pod (namespace: payments) has ImagePullBackOff because image `redis:7.2-canary-20240315` does not exist in the registry.\n\nFix: `kubectl set image deployment/redis-cache-canary redis=redis:7.2 -n payments`"
+	case strings.Contains(lower, "first") || strings.Contains(lower, "priority") || strings.Contains(lower, "fix"):
+		return "Priority order for remediation:\n1. **payment-processor** (critical) — set `DB_HOST` env var to fix nil pointer crash\n2. **data-ingestion-worker** (high) — increase memory limit from 256Mi to 512Mi\n3. **redis-cache-canary** (medium) — update image tag to `redis:7.2`\n\nStart with #1 as it is directly impacting payments."
+	default:
+		return "Based on the bundle, the cluster has 3 active issues: CrashLoopBackOff on `payment-processor` (critical, namespace: payments), OOMKilled on `data-ingestion-worker` (high, namespace: data-pipeline), and ImagePullBackOff on `redis-cache-canary` (medium). Severity score: 72/100. Ask me about any specific issue for details."
+	}
+}
+
 // StubTriageJSON is a pre-canned JSON triage result for stub mode.
 // It models a cluster experiencing both a CrashLoopBackOff and an OOMKilled scenario.
 const StubTriageJSON = `{

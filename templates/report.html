@@ -123,14 +123,14 @@
     </div>
   </div>
 
-  <!-- ── Chat Interface (static — wired up in S5) ── -->
+  <!-- ── Chat Interface ── -->
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col" style="min-height:400px">
     <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
       <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Ask the Bundle</h2>
       <span class="text-xs text-gray-400">Chat</span>
     </div>
-    <div class="flex-1 overflow-y-auto p-4 space-y-3" id="chat-messages">
-      <div class="text-sm text-gray-400 text-center py-8">
+    <div class="flex-1 overflow-y-auto p-4 space-y-1" id="chat-messages" style="min-height:200px;max-height:360px">
+      <div id="chat-placeholder" class="text-sm text-gray-400 text-center py-8">
         <svg class="mx-auto w-8 h-8 text-gray-200 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z"/>
         </svg>
@@ -142,6 +142,7 @@
             hx-post="/chat/{{.SessionID}}"
             hx-target="#chat-messages"
             hx-swap="beforeend"
+            hx-on:htmx:after-request="this.reset(); document.getElementById('chat-messages').scrollTop=999999"
             class="flex gap-2">
         <input type="text"
                name="message"
@@ -202,7 +203,7 @@
     // Enable chat now that analysis is fully done
     document.getElementById('chat-input').disabled  = false;
     document.getElementById('chat-submit').disabled = false;
-    const chatPlaceholder = document.querySelector('#chat-messages .text-gray-400');
+    const chatPlaceholder = document.getElementById('chat-placeholder');
     if (chatPlaceholder) chatPlaceholder.remove();
   });
 
@@ -284,9 +285,11 @@ function addCopyButtons(container) {
   });
 }
 
-// ── Chat auto-scroll ──────────────────────────────────────────────────────────
+// ── Chat auto-scroll and placeholder removal ──────────────────────────────────
 document.body.addEventListener('htmx:afterSwap', function(e) {
   if (e.detail.target && e.detail.target.id === 'chat-messages') {
+    const ph = document.getElementById('chat-placeholder');
+    if (ph) ph.remove();
     e.detail.target.scrollTop = e.detail.target.scrollHeight;
   }
 });

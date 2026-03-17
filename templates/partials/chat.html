@@ -1,0 +1,13 @@
+{{define "chat_messages"}}
+{{- /* Data: struct{ UserMessage, Response string } */ -}}
+<div class="flex justify-end mb-3">
+  <div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 max-w-xs text-sm leading-relaxed break-words">
+    {{.UserMessage}}
+  </div>
+</div>
+<div class="flex justify-start mb-3">
+  <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">
+    {{.Response}}
+  </div>
+</div>
+{{end}}

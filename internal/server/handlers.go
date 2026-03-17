@@ -347,6 +347,59 @@ func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
 	sse.SendEvent("done", "{}")
 }
 
+// HandleChat processes a synchronous chat message and returns rendered message bubbles.
+// It appends both the user message and assistant response to the session's chat history.
+func (h *Handler) HandleChat(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	message := strings.TrimSpace(r.FormValue("message"))
+	if message == "" {
+		http.Error(w, "message is required", http.StatusBadRequest)
+		return
+	}
+
+	// Snapshot history before appending the new user message.
+	history := make([]analysis.ChatMessage, len(sess.ChatHistory))
+	copy(history, sess.ChatHistory)
+
+	data := bundleDataOrEmpty(sess)
+	response, err := analysis.RunChat(r.Context(), h.client, data, history, message, h.cfg.StubMode)
+	if err != nil {
+		slog.Error("chat RunChat failed", "sessionID", sessionID, "err", err)
+		response = "Sorry, I encountered an error: " + err.Error()
+	}
+
+	// Persist both turns to session history.
+	sess.ChatHistory = append(history,
+		analysis.ChatMessage{Role: "user", Content: message},
+		analysis.ChatMessage{Role: "assistant", Content: response},
+	)
+	h.store.Set(sessionID, sess)
+
+	type chatData struct {
+		UserMessage string
+		Response    string
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.tmpl.ExecuteTemplate(w, "chat_messages", chatData{
+		UserMessage: message,
+		Response:    response,
+	}); err != nil {
+		slog.Error("chat template execution failed", "err", err)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // bundleDataOrEmpty returns the session's parsed BundleData, falling back to
