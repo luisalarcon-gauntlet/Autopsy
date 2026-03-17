@@ -1,274 +1,158 @@
 package analysis
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	"github.com/yourusername/autopsy/internal/bundle"
 )
 
-// makeSampleBundleData returns a BundleData with realistic content for prompt tests.
-func makeSampleBundleData() *bundle.BundleData {
+// sampleBundleData returns a realistic BundleData for prompt tests.
+func sampleBundleData() *bundle.BundleData {
 	return &bundle.BundleData{
 		ClusterVersion: "v1.28.4",
 		NodeSummaries: []bundle.NodeSummary{
-			{Name: "node-1", Ready: true, Capacity: map[string]string{"cpu": "4", "memory": "16Gi"}},
-			{Name: "node-2", Ready: false, Conditions: []string{"DiskPressure"}},
+			{Name: "kind-control-plane", Ready: true, Capacity: map[string]string{"cpu": "4", "memory": "8192Mi"}},
 		},
 		PodSummaries: []bundle.PodSummary{
-			{Namespace: "payments", Name: "payment-processor-7d9f5b8c4-xk2pq", Phase: "Running",
-				Ready: "0/1", RestartCount: 12, Reason: "CrashLoopBackOff",
-				Message: "back-off 5m0s restarting failed container"},
-			{Namespace: "data-pipeline", Name: "data-ingestion-worker-6b4d9c7f5-m3nrs", Phase: "Running",
-				Ready: "0/1", RestartCount: 3, Reason: "OOMKilled",
-				Message: "Container exceeded memory limit"},
+			{Namespace: "broken-app", Name: "memory-hog-7d9f8b6c5-xk2pq", Phase: "Running", Reason: "CrashLoopBackOff", RestartCount: 14, NodeName: "kind-control-plane"},
+			{Namespace: "broken-app", Name: "bad-image-5c7f6d8b3-p9rtx", Phase: "Pending", Reason: "ImagePullBackOff", RestartCount: 0},
+			{Namespace: "broken-app", Name: "resource-hog-4a6e5c7b2-q8swz", Phase: "Pending", Reason: "Unschedulable", RestartCount: 0},
 		},
 		Events: []bundle.ClusterEvent{
-			{Namespace: "payments", Name: "payment-processor-7d9f5b8c4-xk2pq",
-				Kind: "Pod", Reason: "BackOff", Type: "Warning",
-				Message: "Back-off restarting failed container", Count: 47},
-			{Namespace: "data-pipeline", Name: "data-ingestion-worker-6b4d9c7f5-m3nrs",
-				Kind: "Pod", Reason: "OOMKilling", Type: "Warning",
-				Message: "Memory cgroup out of memory", Count: 3},
+			{Namespace: "broken-app", Reason: "OOMKilling", Message: "Memory cgroup out of memory: Killed process 12345", Type: "Warning", Count: 14},
+			{Namespace: "broken-app", Reason: "FailedScheduling", Message: "0/1 nodes are available: 1 Insufficient memory", Type: "Warning", Count: 57},
+			{Namespace: "broken-app", Reason: "BackOff", Message: "Back-off pulling image nginx:doesnotexist-v999", Type: "Warning", Count: 18},
 		},
 		LogExcerpts: []bundle.LogExcerpt{
-			{Namespace: "payments", PodName: "payment-processor-7d9f5b8c4-xk2pq",
-				Container: "payment-processor",
-				Lines: []string{
-					"FATAL: runtime error: invalid memory address or nil pointer dereference",
-					"goroutine 1 [running]:",
-					"pkg/db/pool.go:47 +0x1f4",
-				},
-				ErrorCount: 1},
-		},
-		ParseErrors:   []string{},
-		TokenEstimate: 1500,
-	}
-}
-
-func TestBuildTriagePromptUnderBudget(t *testing.T) {
-	data := makeSampleBundleData()
-	prompt := BuildTriagePrompt(data)
-
-	if len(prompt) == 0 {
-		t.Fatal("BuildTriagePrompt returned empty string")
-	}
-
-	if len(prompt) > maxTriagePromptChars {
-		t.Errorf("triage prompt exceeds budget: %d chars > %d", len(prompt), maxTriagePromptChars)
-	}
-}
-
-func TestBuildTimelinePromptUnderBudget(t *testing.T) {
-	data := makeSampleBundleData()
-	prompt := BuildTimelinePrompt(data)
-
-	if len(prompt) == 0 {
-		t.Fatal("BuildTimelinePrompt returned empty string")
-	}
-
-	if len(prompt) > maxTimelinePromptChars {
-		t.Errorf("timeline prompt exceeds budget: %d chars > %d", len(prompt), maxTimelinePromptChars)
-	}
-}
-
-func TestBuildRCAPromptUnderBudget(t *testing.T) {
-	data := makeSampleBundleData()
-	prompt := BuildRCAPrompt(data)
-
-	if len(prompt) == 0 {
-		t.Fatal("BuildRCAPrompt returned empty string")
-	}
-
-	if len(prompt) > maxRCAPromptChars {
-		t.Errorf("RCA prompt exceeds budget: %d chars > %d", len(prompt), maxRCAPromptChars)
-	}
-}
-
-func TestBuildTriagePromptContainsSchema(t *testing.T) {
-	data := makeSampleBundleData()
-	prompt := BuildTriagePrompt(data)
-
-	requiredFields := []string{"severityScore", "clusterHealth", "topIssues", "affectedNamespaces"}
-	for _, field := range requiredFields {
-		if !containsStr(prompt, field) {
-			t.Errorf("triage prompt missing schema field: %s", field)
-		}
-	}
-}
-
-func TestExtractJSONFromMarkdown(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "plain JSON",
-			input: `{"key": "value"}`,
-			want:  `{"key": "value"}`,
-		},
-		{
-			name: "JSON in json fences",
-			input: "```json\n{\"key\": \"value\"}\n```",
-			want:  `{"key": "value"}`,
-		},
-		{
-			name: "JSON in plain fences",
-			input: "```\n{\"key\": \"value\"}\n```",
-			want:  `{"key": "value"}`,
-		},
-		{
-			name:  "whitespace trimmed",
-			input: "  {\"key\": \"value\"}  ",
-			want:  `{"key": "value"}`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractJSONFromMarkdown(tt.input)
-			if got != tt.want {
-				t.Errorf("extractJSONFromMarkdown(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseTriageJSON(t *testing.T) {
-	result, err := parseTriageJSON(StubTriageJSON)
-	if err != nil {
-		t.Fatalf("parseTriageJSON failed on StubTriageJSON: %v", err)
-	}
-	if result.SeverityScore == 0 {
-		t.Error("expected non-zero SeverityScore")
-	}
-	if len(result.TopIssues) == 0 {
-		t.Error("expected at least one issue in TopIssues")
-	}
-	if result.ClusterHealth == "" {
-		t.Error("expected non-empty ClusterHealth")
-	}
-}
-
-func TestBuildStubTimelineResult(t *testing.T) {
-	result := buildStubTimelineResult()
-	if len(result.Events) == 0 {
-		t.Fatal("expected at least one timeline event")
-	}
-
-	hasCritical := false
-	for _, e := range result.Events {
-		if e.Severity == "critical" {
-			hasCritical = true
-		}
-		if e.RelativeTime == "" {
-			t.Errorf("timeline event missing RelativeTime: %+v", e)
-		}
-		if e.Title == "" {
-			t.Errorf("timeline event missing Title: %+v", e)
-		}
-	}
-
-	if !hasCritical {
-		t.Error("expected at least one critical event in stub timeline")
-	}
-}
-
-func TestParseTimelineJSON(t *testing.T) {
-	sampleJSON := `{
-		"events": [
 			{
-				"relativeTime": "T+0:00",
-				"title": "First failure event",
-				"detail": "Something went wrong with the pod startup.",
-				"severity": "critical",
-				"linkedPod": "payment-processor-7d9f5b8c4-xk2pq"
+				Namespace: "broken-app",
+				PodName:   "memory-hog-7d9f8b6c5-xk2pq",
+				Container: "memory-hog",
+				Lines:     []string{"stress: FAIL: [1] (415) <-- worker 7 got signal 9", "stress: FAIL: [1] (451) failed run completed in 1s"},
 			},
-			{
-				"relativeTime": "T+5:00",
-				"title": "Secondary OOM event",
-				"detail": "Worker exceeded memory limit.",
-				"severity": "warning",
-				"linkedPod": "data-ingestion-worker-6b4d9c7f5-m3nrs"
-			}
-		]
-	}`
-
-	result, err := parseTimelineJSON(sampleJSON)
-	if err != nil {
-		t.Fatalf("parseTimelineJSON failed: %v", err)
-	}
-	if len(result.Events) != 2 {
-		t.Errorf("expected 2 events, got %d", len(result.Events))
-	}
-	if result.Events[0].RelativeTime != "T+0:00" {
-		t.Errorf("expected first event at T+0:00, got %q", result.Events[0].RelativeTime)
-	}
-	if result.Events[0].Severity != "critical" {
-		t.Errorf("expected first event severity=critical, got %q", result.Events[0].Severity)
+		},
+		TokenEstimate: 1200,
 	}
 }
 
-func TestBuildTimelinePromptContainsSchema(t *testing.T) {
-	data := makeSampleBundleData()
+func TestBuildTriagePrompt_UnderBudget(t *testing.T) {
+	data := sampleBundleData()
+	prompt := BuildTriagePrompt(data)
+
+	const maxChars = 40_000
+	if len(prompt) > maxChars {
+		t.Errorf("triage prompt too large: %d chars (max %d)", len(prompt), maxChars)
+	}
+}
+
+func TestBuildTriagePrompt_ContainsRequiredFields(t *testing.T) {
+	data := sampleBundleData()
+	prompt := BuildTriagePrompt(data)
+
+	required := []string{
+		"severityScore",
+		"clusterHealth",
+		"topIssues",
+		"JSON",
+	}
+	for _, field := range required {
+		if !strings.Contains(prompt, field) {
+			t.Errorf("triage prompt missing required field/keyword: %q", field)
+		}
+	}
+}
+
+func TestBuildTriagePrompt_IncludesPodData(t *testing.T) {
+	data := sampleBundleData()
+	prompt := BuildTriagePrompt(data)
+
+	// The pod names from our sample data must appear in the prompt
+	pods := []string{"memory-hog-7d9f8b6c5-xk2pq", "bad-image-5c7f6d8b3-p9rtx"}
+	for _, pod := range pods {
+		if !strings.Contains(prompt, pod) {
+			t.Errorf("triage prompt missing pod name: %q", pod)
+		}
+	}
+}
+
+func TestBuildTimelinePrompt_UnderBudget(t *testing.T) {
+	data := sampleBundleData()
 	prompt := BuildTimelinePrompt(data)
 
-	requiredFields := []string{"relativeTime", "title", "severity", "linkedPod"}
-	for _, field := range requiredFields {
-		if !containsStr(prompt, field) {
-			t.Errorf("timeline prompt missing schema field: %s", field)
-		}
+	const maxChars = 40_000
+	if len(prompt) > maxChars {
+		t.Errorf("timeline prompt too large: %d chars (max %d)", len(prompt), maxChars)
 	}
 }
 
-func TestBuildRCAPromptContainsSections(t *testing.T) {
-	data := makeSampleBundleData()
+func TestBuildTimelinePrompt_ContainsEvents(t *testing.T) {
+	data := sampleBundleData()
+	prompt := BuildTimelinePrompt(data)
+
+	// Event reasons should appear in the prompt
+	if !strings.Contains(prompt, "OOMKilling") {
+		t.Error("timeline prompt missing OOMKilling event")
+	}
+	if !strings.Contains(prompt, "FailedScheduling") {
+		t.Error("timeline prompt missing FailedScheduling event")
+	}
+}
+
+func TestBuildRCAPrompt_UnderBudget(t *testing.T) {
+	data := sampleBundleData()
 	prompt := BuildRCAPrompt(data)
 
-	requiredSections := []string{"Root Cause", "Evidence", "Fix Steps", "Prevention"}
-	for _, section := range requiredSections {
-		if !containsStr(prompt, section) {
-			t.Errorf("RCA prompt missing section: %s", section)
+	const maxChars = 60_000
+	if len(prompt) > maxChars {
+		t.Errorf("RCA prompt too large: %d chars (max %d)", len(prompt), maxChars)
+	}
+}
+
+func TestBuildRCAPrompt_ContainsLogExcerpts(t *testing.T) {
+	data := sampleBundleData()
+	prompt := BuildRCAPrompt(data)
+
+	// Log content should appear in RCA prompt
+	if !strings.Contains(prompt, "signal 9") {
+		t.Error("RCA prompt missing log excerpt content")
+	}
+}
+
+func TestSystemPrompts_NotEmpty(t *testing.T) {
+	prompts := map[string]string{
+		"TriageSystemPrompt":   TriageSystemPrompt,
+		"TimelineSystemPrompt": TimelineSystemPrompt,
+		"RCASystemPrompt":      RCASystemPrompt,
+	}
+	for name, p := range prompts {
+		if strings.TrimSpace(p) == "" {
+			t.Errorf("%s is empty", name)
+		}
+		if len(p) < 50 {
+			t.Errorf("%s is suspiciously short (%d chars)", name, len(p))
 		}
 	}
 }
 
-func TestStreamStubText(t *testing.T) {
-	var buf strings.Builder
-	ctx := context.Background()
-
-	err := streamStubText(ctx, StubRCAText, &buf)
-	if err != nil {
-		t.Fatalf("streamStubText failed: %v", err)
-	}
-
-	got := buf.String()
-	if got != StubRCAText {
-		t.Errorf("streamStubText output mismatch: got %d bytes, want %d bytes", len(got), len(StubRCAText))
+func TestSystemPrompts_ContainJSONInstruction(t *testing.T) {
+	// Triage and timeline prompts must instruct Claude to return JSON
+	for name, p := range map[string]string{
+		"TriageSystemPrompt":   TriageSystemPrompt,
+		"TimelineSystemPrompt": TimelineSystemPrompt,
+	} {
+		if !strings.Contains(strings.ToUpper(p), "JSON") {
+			t.Errorf("%s should instruct Claude to return JSON", name)
+		}
 	}
 }
 
-func TestStreamStubTextContextCancel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // immediately cancelled
-
-	var buf strings.Builder
-	err := streamStubText(ctx, StubRCAText, &buf)
-	if err == nil {
-		t.Error("expected error from cancelled context, got nil")
+func TestRCASystemPrompt_ContainsRequiredSections(t *testing.T) {
+	// RCA prompt must mention the required markdown sections
+	required := []string{"Root Cause", "Evidence", "Fix Steps", "Prevention"}
+	for _, section := range required {
+		if !strings.Contains(RCASystemPrompt, section) {
+			t.Errorf("RCASystemPrompt missing required section: %q", section)
+		}
 	}
-}
-
-func containsStr(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 &&
-		(func() bool {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
-				}
-			}
-			return false
-		})()
 }

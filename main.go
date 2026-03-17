@@ -8,10 +8,8 @@ import (
 	"os"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/yourusername/autopsy/internal/analysis"
 	"github.com/yourusername/autopsy/internal/config"
 	"github.com/yourusername/autopsy/internal/server"
-	"github.com/yourusername/autopsy/internal/session"
 )
 
 func main() {
@@ -22,14 +20,12 @@ func main() {
 	// embed.FS ensures the binary is self-contained; no template files needed on disk at runtime.
 	tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html", "templates/partials/*.html"))
 
-	store := session.NewStore(cfg.SessionTTL)
-	cache := analysis.NewCache()
-
 	// The Anthropic client reads ANTHROPIC_API_KEY from the environment automatically.
 	// In stub mode the client exists but Claude calls are bypassed.
 	client := anthropic.NewClient()
 
-	h := server.NewHandler(cfg, tmpl, store, &client, cache)
+	h := server.NewHandler(cfg, &client)
+	h.SetTemplate(tmpl)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", h.HandleIndex)

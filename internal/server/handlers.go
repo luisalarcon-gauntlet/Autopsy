@@ -34,21 +34,22 @@ type Handler struct {
 	cache  *analysis.Cache
 }
 
-// NewHandler creates a Handler with the given dependencies.
-func NewHandler(
-	cfg config.Config,
-	tmpl *template.Template,
-	store *session.Store,
-	client *anthropic.Client,
-	cache *analysis.Cache,
-) *Handler {
+// NewHandler creates a Handler with the given configuration and API client.
+// A session store and analysis cache are created internally using the config's
+// SessionTTL. Call SetTemplate to attach parsed HTML templates before serving.
+func NewHandler(cfg config.Config, client *anthropic.Client) *Handler {
 	return &Handler{
 		cfg:    cfg,
-		tmpl:   tmpl,
-		store:  store,
+		store:  session.NewStore(cfg.SessionTTL),
 		client: client,
-		cache:  cache,
+		cache:  analysis.NewCache(),
 	}
+}
+
+// SetTemplate attaches parsed HTML templates to the handler.
+// It must be called before the handler serves any requests that render HTML.
+func (h *Handler) SetTemplate(tmpl *template.Template) {
+	h.tmpl = tmpl
 }
 
 // HandleIndex serves the upload page.
@@ -69,6 +70,11 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 // HandleUpload accepts a multipart upload of a .tar.gz bundle, extracts and
 // parses it, creates a session, and redirects via HTMX to the report page.
 func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	maxBytes := h.cfg.MaxBundleMB * 1024 * 1024
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 

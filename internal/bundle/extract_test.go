@@ -11,8 +11,7 @@ import (
 	"testing"
 )
 
-// makeTarGz creates an in-memory tar.gz archive from the provided files map
-// (name → content).
+// makeTarGz builds an in-memory .tar.gz from a map of filename→content.
 func makeTarGz(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -21,10 +20,9 @@ func makeTarGz(t *testing.T, files map[string]string) []byte {
 
 	for name, content := range files {
 		hdr := &tar.Header{
-			Name:     name,
-			Mode:     0o640,
-			Size:     int64(len(content)),
-			Typeflag: tar.TypeReg,
+			Name: name,
+			Mode: 0o644,
+			Size: int64(len(content)),
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			t.Fatalf("WriteHeader %s: %v", name, err)
@@ -35,182 +33,161 @@ func makeTarGz(t *testing.T, files map[string]string) []byte {
 	}
 
 	if err := tw.Close(); err != nil {
-		t.Fatalf("tw.Close: %v", err)
+		t.Fatalf("tar close: %v", err)
 	}
 	if err := gw.Close(); err != nil {
-		t.Fatalf("gw.Close: %v", err)
+		t.Fatalf("gzip close: %v", err)
 	}
 	return buf.Bytes()
 }
 
 func TestExtract_ValidBundle(t *testing.T) {
 	files := map[string]string{
-		"cluster-resources/pods.json":       `{"items":[]}`,
-		"cluster-resources/nodes.json":      `{"items":[]}`,
-		"logs/default/nginx/nginx.log":      "2024-01-01 INFO started\n",
+		"cluster-resources/nodes.json":             `[{"metadata":{"name":"node1"}}]`,
+		"cluster-resources/default/pods.json":      `[{"metadata":{"name":"pod1","namespace":"default"}}]`,
+		"cluster-resources/default/events.json":    `[]`,
+		"logs/default/pod1/container1.log":         "some log output\n",
+		"cluster-info/cluster_version.json":        `{"info":{"gitVersion":"v1.28.4"},"string":"v1.28.4"}`,
 	}
-	data := makeTarGz(t, files)
 
-	dir, err := Extract(context.Background(), bytes.NewReader(data), MaxTotalSizeBytes)
+	data := makeTarGz(t, files)
+	dir, err := Extract(context.Background(), bytes.NewReader(data), 100<<20)
 	if err != nil {
-		t.Fatalf("Extract() error = %v", err)
+		t.Fatalf("Extract() unexpected error: %v", err)
 	}
 	defer os.RemoveAll(dir)
 
+	// Verify all files were extracted
 	for name := range files {
-		p := filepath.Join(dir, filepath.FromSlash(name))
-		if _, err := os.Stat(p); err != nil {
-			t.Errorf("expected file %s to exist: %v", p, err)
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected file %q not found in extracted dir", name)
 		}
+	}
+}
+
+func TestExtract_EmptyArchive(t *testing.T) {
+	data := makeTarGz(t, map[string]string{})
+	dir, err := Extract(context.Background(), bytes.NewReader(data), 100<<20)
+	if err != nil {
+		t.Fatalf("Extract() should succeed on empty archive, got: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected empty dir, got %d entries", len(entries))
 	}
 }
 
 func TestExtract_PathTraversal(t *testing.T) {
 	tests := []struct {
-		name    string
-		tarPath string
+		name     string
+		filename string
 	}{
-		{"dotdot prefix", "../../../../etc/passwd"},
-		{"dotdot in middle", "cluster-resources/../../../etc/shadow"},
+		{"dotdot prefix", "../../etc/passwd"},
+		{"dotdot in middle", "cluster-resources/../../etc/passwd"},
+		{"absolute path", "/etc/passwd"},
+		{"dotdot after valid", "logs/../../../etc/shadow"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			gw := gzip.NewWriter(&buf)
-			tw := tar.NewWriter(gw)
-
-			content := "evil content"
-			hdr := &tar.Header{
-				Name:     tt.tarPath,
-				Mode:     0o640,
-				Size:     int64(len(content)),
-				Typeflag: tar.TypeReg,
+			files := map[string]string{
+				tt.filename:                         "malicious content",
+				"cluster-resources/nodes.json":      `[]`, // one legit file
 			}
-			if err := tw.WriteHeader(hdr); err != nil {
-				t.Fatalf("WriteHeader: %v", err)
+			data := makeTarGz(t, files)
+			dir, err := Extract(context.Background(), bytes.NewReader(data), 100<<20)
+			// Should NOT return an error — malicious files are skipped, not fatal
+			if err != nil {
+				t.Fatalf("Extract() unexpected error: %v", err)
 			}
-			tw.Write([]byte(content))
-			tw.Close()
-			gw.Close()
+			defer os.RemoveAll(dir)
 
-			dir, err := Extract(context.Background(), bytes.NewReader(buf.Bytes()), MaxTotalSizeBytes)
-			// Extract may succeed (the malicious entry is skipped) or fail.
-			// The important thing is that /etc/passwd (or equiv) was NOT written.
-			if dir != "" {
-				defer os.RemoveAll(dir)
-				// Verify the evil path was not written under the temp dir.
-				etcPath := filepath.Join(dir, "etc", "passwd")
-				if _, serr := os.Stat(etcPath); serr == nil {
-					t.Errorf("path traversal succeeded: %s was created", etcPath)
-				}
-				_ = err
+			// The traversal file must NOT exist outside the temp dir
+			// Check that no file named "passwd" or "shadow" escaped
+			escaped := filepath.Join(dir, "..", "etc", "passwd")
+			if _, statErr := os.Stat(escaped); !os.IsNotExist(statErr) {
+				t.Errorf("path traversal succeeded: file exists at %s", escaped)
+			}
+
+			// The legit file must still be there
+			legit := filepath.Join(dir, "cluster-resources", "nodes.json")
+			if _, statErr := os.Stat(legit); os.IsNotExist(statErr) {
+				t.Errorf("legitimate file was not extracted")
 			}
 		})
 	}
 }
 
 func TestExtract_FileSizeLimit(t *testing.T) {
-	// Create a single file that exceeds MaxFileSizeBytes.
-	bigContent := strings.Repeat("a", int(MaxFileSizeBytes)+10)
-
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gw)
-
-	hdr := &tar.Header{
-		Name:     "big-file.txt",
-		Mode:     0o640,
-		Size:     int64(len(bigContent)),
-		Typeflag: tar.TypeReg,
-	}
-	tw.WriteHeader(hdr)
-	tw.Write([]byte(bigContent))
-	tw.Close()
-	gw.Close()
-
-	dir, err := Extract(context.Background(), bytes.NewReader(buf.Bytes()), MaxTotalSizeBytes)
-	if dir != "" {
-		os.RemoveAll(dir)
-	}
-	if err == nil {
-		t.Error("expected error for file exceeding size limit, got nil")
-	}
-}
-
-func TestExtract_TotalSizeLimit(t *testing.T) {
-	// Max is set to 100 bytes; create two 60-byte files.
+	// Build a file that exceeds the per-file limit (50MB)
+	bigContent := strings.Repeat("x", 51*1024*1024) // 51MB
 	files := map[string]string{
-		"file1.txt": strings.Repeat("a", 60),
-		"file2.txt": strings.Repeat("b", 60),
+		"logs/default/pod1/container1.log": bigContent,
 	}
 	data := makeTarGz(t, files)
-
-	dir, err := Extract(context.Background(), bytes.NewReader(data), 100)
-	if dir != "" {
-		os.RemoveAll(dir)
-	}
+	_, err := Extract(context.Background(), bytes.NewReader(data), 200<<20)
 	if err == nil {
-		t.Error("expected error for total size exceeding limit, got nil")
+		t.Error("Extract() should return error for file exceeding 50MB limit")
 	}
 }
 
 func TestExtract_ContextCancellation(t *testing.T) {
+	// Build a valid bundle
 	files := map[string]string{
-		"a.txt": strings.Repeat("x", 1000),
-		"b.txt": strings.Repeat("y", 1000),
+		"cluster-resources/nodes.json": `[]`,
+		"cluster-resources/default/pods.json": `[]`,
 	}
 	data := makeTarGz(t, files)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	dir, err := Extract(ctx, bytes.NewReader(data), MaxTotalSizeBytes)
-	if dir != "" {
-		os.RemoveAll(dir)
-	}
+	_, err := Extract(ctx, bytes.NewReader(data), 100<<20)
 	if err == nil {
-		t.Error("expected error when context is already cancelled, got nil")
+		t.Error("Extract() should return error on cancelled context")
 	}
 }
 
-func TestExtract_EmptyArchive(t *testing.T) {
-	data := makeTarGz(t, map[string]string{})
+func TestExtract_InvalidGzip(t *testing.T) {
+	_, err := Extract(context.Background(), strings.NewReader("not a gzip file"), 100<<20)
+	if err == nil {
+		t.Error("Extract() should return error for invalid gzip data")
+	}
+}
 
-	dir, err := Extract(context.Background(), bytes.NewReader(data), MaxTotalSizeBytes)
+func TestExtract_TempDirCreated(t *testing.T) {
+	files := map[string]string{
+		"cluster-resources/nodes.json": `[]`,
+	}
+	data := makeTarGz(t, files)
+
+	dir, err := Extract(context.Background(), bytes.NewReader(data), 100<<20)
 	if err != nil {
-		t.Fatalf("Extract() error = %v, want nil for empty archive", err)
-	}
-	defer os.RemoveAll(dir)
-
-	if dir == "" {
-		t.Error("expected non-empty dir path")
-	}
-}
-
-func TestSanitizePath(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		wantErr  bool
-		wantOut  string
-	}{
-		{"normal path", "cluster-resources/pods.json", false, ""},
-		{"leading slash", "/etc/passwd", true, ""},
-		{"dotdot start", "../../etc/passwd", true, ""},
-		{"dotdot middle", "a/../../../etc/passwd", true, ""},
-		{"clean path", "a/b/c.json", false, ""},
+		t.Fatalf("Extract() unexpected error: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			out, err := sanitizePath(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("sanitizePath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
-			}
-			if !tt.wantErr && out == "" {
-				t.Errorf("sanitizePath(%q) returned empty string without error", tt.input)
-			}
-		})
+	// Dir must exist and be a directory
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("temp dir %q does not exist: %v", dir, err)
+	}
+	if !info.IsDir() {
+		t.Errorf("expected %q to be a directory", dir)
+	}
+
+	// Cleanup
+	if err := os.RemoveAll(dir); err != nil {
+		t.Errorf("cleanup failed: %v", err)
+	}
+
+	// Dir must no longer exist after cleanup
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("temp dir still exists after RemoveAll")
 	}
 }

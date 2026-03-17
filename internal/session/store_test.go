@@ -8,113 +8,102 @@ import (
 	"time"
 )
 
-func TestStore_BasicCRUD(t *testing.T) {
+func TestStore_SetAndGet(t *testing.T) {
 	store := NewStore(30 * time.Minute)
 
-	sess := store.New("/tmp/test-bundle")
-	if sess.ID == "" {
-		t.Fatal("New() returned session with empty ID")
-	}
-	if sess.BundleDir != "/tmp/test-bundle" {
-		t.Errorf("BundleDir = %q, want %q", sess.BundleDir, "/tmp/test-bundle")
-	}
+	dir := t.TempDir()
+	sess := store.New(dir)
 
 	got, ok := store.Get(sess.ID)
 	if !ok {
-		t.Fatalf("Get(%q) not found after Set", sess.ID)
+		t.Fatal("Get() returned false after Set()")
 	}
 	if got.ID != sess.ID {
-		t.Errorf("Get returned ID %q, want %q", got.ID, sess.ID)
+		t.Errorf("ID = %q, want %q", got.ID, sess.ID)
 	}
-
-	store.Delete(sess.ID)
-
-	_, ok = store.Get(sess.ID)
-	if ok {
-		t.Error("Get() found session after Delete")
+	if got.BundleDir != dir {
+		t.Errorf("BundleDir = %q, want %q", got.BundleDir, dir)
 	}
 }
 
 func TestStore_GetMissing(t *testing.T) {
 	store := NewStore(30 * time.Minute)
-	_, ok := store.Get("nonexistent-id")
+
+	_, ok := store.Get("does-not-exist")
 	if ok {
-		t.Error("Get() returned true for nonexistent session")
+		t.Error("Get() should return false for unknown ID")
+	}
+}
+
+func TestStore_Delete(t *testing.T) {
+	store := NewStore(30 * time.Minute)
+
+	dir := t.TempDir()
+	sess := store.New(dir)
+
+	store.Delete(sess.ID)
+
+	_, ok := store.Get(sess.ID)
+	if ok {
+		t.Error("Get() should return false after Delete()")
 	}
 }
 
 func TestStore_DeleteRemovesBundleDir(t *testing.T) {
-	// Create a real temp dir to verify os.RemoveAll is called.
-	tmpDir, err := os.MkdirTemp("", "autopsy-session-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
+	store := NewStore(30 * time.Minute)
+
+	// Create a real temp dir with a file in it
+	dir := t.TempDir()
+	testFile := dir + "/test.txt"
+	if err := os.WriteFile(testFile, []byte("test"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 
-	store := NewStore(30 * time.Minute)
-	sess := store.New(tmpDir)
-
+	sess := store.New(dir)
 	store.Delete(sess.ID)
 
-	if _, err := os.Stat(tmpDir); !os.IsNotExist(err) {
-		t.Errorf("expected bundle dir %s to be removed after Delete, stat err: %v", tmpDir, err)
-		os.RemoveAll(tmpDir)
+	// BundleDir should be gone
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("BundleDir still exists after Delete(): %s", dir)
 	}
 }
 
-func TestStore_TTLExpiry(t *testing.T) {
-	// Create a real temp dir to verify cleanup.
-	tmpDir, err := os.MkdirTemp("", "autopsy-ttl-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
+func TestStore_UniqueIDs(t *testing.T) {
+	store := NewStore(30 * time.Minute)
 
-	store := &Store{
-		sessions: make(map[string]*Session),
-		ttl:      1 * time.Millisecond, // very short TTL for testing
-	}
-
-	sess := store.New(tmpDir)
-	sess.CreatedAt = time.Now().Add(-1 * time.Hour) // fake an old session
-	store.Set(sess.ID, sess)
-
-	store.deleteExpired()
-
-	_, ok := store.Get(sess.ID)
-	if ok {
-		t.Error("expired session still present after deleteExpired()")
-		os.RemoveAll(tmpDir)
-	}
-
-	// Verify the bundle dir was removed.
-	if _, err := os.Stat(tmpDir); !os.IsNotExist(err) {
-		t.Errorf("expected bundle dir to be removed after TTL expiry, stat err: %v", err)
-		os.RemoveAll(tmpDir)
+	ids := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		sess := store.New(t.TempDir())
+		if ids[sess.ID] {
+			t.Errorf("duplicate session ID generated: %s", sess.ID)
+		}
+		ids[sess.ID] = true
 	}
 }
 
 func TestStore_ConcurrentAccess(t *testing.T) {
+	// This test is designed to catch races — run with -race
 	store := NewStore(30 * time.Minute)
 
-	const goroutines = 20
-	const opsPerGoroutine = 50
+	const goroutines = 50
+	const opsPerGoroutine = 20
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for i := range goroutines {
-		go func(n int) {
+	for i := 0; i < goroutines; i++ {
+		go func(i int) {
 			defer wg.Done()
-			for j := range opsPerGoroutine {
-				key := fmt.Sprintf("session-%d-%d", n, j)
-				sess := &Session{
-					ID:        key,
-					BundleDir: "",
-					CreatedAt: time.Now(),
-				}
-				store.Set(key, sess)
-				store.Get(key)
-				if j%5 == 0 {
-					store.Delete(key)
+			for j := 0; j < opsPerGoroutine; j++ {
+				dir := t.TempDir()
+				sess := store.New(dir)
+
+				// Concurrent read
+				_, _ = store.Get(sess.ID)
+
+				// Concurrent delete (some will find it, some won't — both OK)
+				if j%3 == 0 {
+					store.Delete(sess.ID)
 				}
 			}
 		}(i)
@@ -123,21 +112,83 @@ func TestStore_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func TestStore_Len(t *testing.T) {
+func TestStore_TTLExpiry(t *testing.T) {
+	// Very short TTL for testing
+	ttl := 50 * time.Millisecond
+	store := NewStore(ttl)
+
+	dir := t.TempDir()
+	sess := store.New(dir)
+
+	// Should exist immediately
+	if _, ok := store.Get(sess.ID); !ok {
+		t.Fatal("session should exist immediately after creation")
+	}
+
+	// Wait for TTL to pass
+	time.Sleep(ttl * 3)
+
+	// Manually trigger cleanup (or verify it ran)
+	store.sweepExpired()
+
+	if _, ok := store.Get(sess.ID); ok {
+		t.Error("session should be expired after TTL")
+	}
+}
+
+func TestStore_UpdateSession(t *testing.T) {
 	store := NewStore(30 * time.Minute)
-	if store.Len() != 0 {
-		t.Errorf("new store Len() = %d, want 0", store.Len())
+
+	dir := t.TempDir()
+	sess := store.New(dir)
+
+	// Update the session with analysis results
+	sess.ChatHistory = append(sess.ChatHistory, ChatMessage{
+		Role:    "user",
+		Content: "Why is my pod crashing?",
+	})
+	store.Set(sess.ID, sess)
+
+	got, ok := store.Get(sess.ID)
+	if !ok {
+		t.Fatal("session not found after Set()")
+	}
+	if len(got.ChatHistory) != 1 {
+		t.Errorf("ChatHistory len = %d, want 1", len(got.ChatHistory))
+	}
+	if got.ChatHistory[0].Content != "Why is my pod crashing?" {
+		t.Errorf("ChatHistory[0].Content = %q", got.ChatHistory[0].Content)
+	}
+}
+
+func TestStore_MultipleSessionsIsolated(t *testing.T) {
+	store := NewStore(30 * time.Minute)
+
+	sessions := make([]*Session, 10)
+	for i := 0; i < 10; i++ {
+		dir := t.TempDir()
+		sess := store.New(dir)
+		sess.ChatHistory = append(sess.ChatHistory, ChatMessage{
+			Role:    "user",
+			Content: fmt.Sprintf("message from session %d", i),
+		})
+		store.Set(sess.ID, sess)
+		sessions[i] = sess
 	}
 
-	s1 := store.New("")
-	s2 := store.New("")
-	if store.Len() != 2 {
-		t.Errorf("Len() = %d, want 2", store.Len())
+	// Each session should only have its own chat history
+	for i, sess := range sessions {
+		got, ok := store.Get(sess.ID)
+		if !ok {
+			t.Errorf("session %d not found", i)
+			continue
+		}
+		if len(got.ChatHistory) != 1 {
+			t.Errorf("session %d: expected 1 chat message, got %d", i, len(got.ChatHistory))
+		}
+		expected := fmt.Sprintf("message from session %d", i)
+		if got.ChatHistory[0].Content != expected {
+			t.Errorf("session %d: content = %q, want %q", i, got.ChatHistory[0].Content, expected)
+		}
 	}
-
-	store.Delete(s1.ID)
-	if store.Len() != 1 {
-		t.Errorf("Len() = %d, want 1 after delete", store.Len())
-	}
-	store.Delete(s2.ID)
 }

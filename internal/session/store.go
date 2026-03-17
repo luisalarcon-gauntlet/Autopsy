@@ -12,6 +12,11 @@ import (
 	"github.com/yourusername/autopsy/internal/bundle"
 )
 
+// ChatMessage is an alias for analysis.ChatMessage, re-exported so callers
+// in this package (including tests) do not need to import the analysis package
+// just to construct a chat message.
+type ChatMessage = analysis.ChatMessage
+
 // Session holds all state associated with a single bundle upload.
 type Session struct {
 	// ID is the unique session identifier (UUID).
@@ -111,11 +116,13 @@ func (s *Store) cleanupLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		s.deleteExpired()
+		s.sweepExpired()
 	}
 }
 
-func (s *Store) deleteExpired() {
+// sweepExpired deletes all sessions that have exceeded the TTL.
+// It is called by cleanupLoop on a ticker and may also be called directly in tests.
+func (s *Store) sweepExpired() {
 	now := time.Now()
 
 	s.mu.RLock()

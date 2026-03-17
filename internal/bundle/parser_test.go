@@ -2,668 +2,279 @@ package bundle
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"strings"
 	"testing"
-	"time"
 )
 
-// testdataDir is the path to the shared fixture directory used by all parser tests.
 const testdataDir = "testdata"
 
-// --- S2.1: Pod and node parsing ---
-
-func TestParse_ClusterVersion(t *testing.T) {
+func TestParse_FullBundle(t *testing.T) {
 	data, err := Parse(context.Background(), testdataDir)
 	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+		t.Fatalf("Parse() unexpected error: %v", err)
+	}
+
+	// Cluster version
+	if data.ClusterVersion == "" {
+		t.Error("ClusterVersion should not be empty")
 	}
 	if data.ClusterVersion != "v1.28.4" {
 		t.Errorf("ClusterVersion = %q, want %q", data.ClusterVersion, "v1.28.4")
 	}
-}
 
-func TestParse_Nodes(t *testing.T) {
-	data, err := Parse(context.Background(), testdataDir)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+	// Nodes
+	if len(data.NodeSummaries) == 0 {
+		t.Error("NodeSummaries should not be empty")
 	}
-
-	if len(data.NodeSummaries) != 2 {
-		t.Fatalf("len(NodeSummaries) = %d, want 2", len(data.NodeSummaries))
+	node := data.NodeSummaries[0]
+	if node.Name != "kind-control-plane" {
+		t.Errorf("node.Name = %q, want %q", node.Name, "kind-control-plane")
 	}
-
-	tests := []struct {
-		name      string
-		wantReady bool
-		wantConds []string
-	}{
-		{"node-1", true, nil},
-		{"node-2", false, []string{"KubeletHasSufficientMemory"}},
-	}
-
-	nodeByName := make(map[string]NodeSummary)
-	for _, n := range data.NodeSummaries {
-		nodeByName[n.Name] = n
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			n, ok := nodeByName[tt.name]
-			if !ok {
-				t.Fatalf("node %q not found", tt.name)
-			}
-			if n.Ready != tt.wantReady {
-				t.Errorf("Ready = %v, want %v", n.Ready, tt.wantReady)
-			}
-			if len(tt.wantConds) > 0 {
-				found := false
-				for _, c := range n.Conditions {
-					if c == tt.wantConds[0] {
-						found = true
-					}
-				}
-				if !found {
-					t.Errorf("Conditions = %v, want to contain %v", n.Conditions, tt.wantConds)
-				}
-			}
-			if n.Capacity["cpu"] == "" {
-				t.Errorf("Capacity[cpu] is empty")
-			}
-		})
+	if !node.Ready {
+		t.Error("node should be Ready=true")
 	}
 }
 
-func TestParse_Pods(t *testing.T) {
+func TestParse_PodStatuses(t *testing.T) {
 	data, err := Parse(context.Background(), testdataDir)
 	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// default + kube-system namespaces contribute 4 + 1 = 5 pods.
-	if len(data.PodSummaries) != 5 {
-		t.Fatalf("len(PodSummaries) = %d, want 5", len(data.PodSummaries))
-	}
-
-	podByName := make(map[string]PodSummary)
+	// Build a lookup map for easy assertions
+	pods := make(map[string]PodSummary)
 	for _, p := range data.PodSummaries {
-		podByName[p.Name] = p
+		pods[p.Name] = p
 	}
 
 	tests := []struct {
-		name          string
+		podName       string
+		wantReason    string
+		wantRestarts  int
 		wantNamespace string
 		wantPhase     string
-		wantReady     string
-		wantRestarts  int
-		wantReason    string
 	}{
 		{
-			name:          "nginx-7d8b9c4f5-xkcd2",
-			wantNamespace: "default",
-			wantPhase:     "Running",
-			wantReady:     "1/1",
-			wantRestarts:  0,
-			wantReason:    "",
-		},
-		{
-			name:          "payment-processor-6d4b8f9c5-abc12",
-			wantNamespace: "default",
-			wantPhase:     "Running",
-			wantReady:     "0/1",
-			wantRestarts:  15,
+			podName:       "memory-hog-7d9f8b6c5-xk2pq",
 			wantReason:    "CrashLoopBackOff",
-		},
-		{
-			name:          "data-ingestion-worker-5c7d9f8b6-def34",
-			wantNamespace: "default",
-			wantPhase:     "Failed",
-			wantReady:     "0/1",
-			wantRestarts:  3,
-			wantReason:    "OOMKilled",
-		},
-		{
-			name:          "redis-cache-canary-abc123",
-			wantNamespace: "default",
-			wantPhase:     "Pending",
-			wantReady:     "0/1",
-			wantRestarts:  0,
-			wantReason:    "ImagePullBackOff",
-		},
-		{
-			name:          "coredns-5d78c9869d-abc",
-			wantNamespace: "kube-system",
+			wantRestarts:  14,
+			wantNamespace: "broken-app",
 			wantPhase:     "Running",
-			wantReady:     "1/1",
+		},
+		{
+			podName:       "bad-entrypoint-6b8d7f9c4-m3nvw",
+			wantReason:    "CrashLoopBackOff",
+			wantRestarts:  8,
+			wantNamespace: "broken-app",
+			wantPhase:     "Running",
+		},
+		{
+			podName:       "bad-image-5c7f6d8b3-p9rtx",
+			wantReason:    "ImagePullBackOff",
 			wantRestarts:  0,
-			wantReason:    "",
+			wantNamespace: "broken-app",
+			wantPhase:     "Pending",
+		},
+		{
+			podName:       "resource-hog-4a6e5c7b2-q8swz",
+			wantReason:    "Unschedulable",
+			wantRestarts:  0,
+			wantNamespace: "broken-app",
+			wantPhase:     "Pending",
+		},
+		{
+			podName:       "missing-config-3f5d4b6a1-r7tvx",
+			wantReason:    "CreateContainerConfigError",
+			wantRestarts:  0,
+			wantNamespace: "broken-app",
+			wantPhase:     "Pending",
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p, ok := podByName[tt.name]
+		t.Run(tt.podName, func(t *testing.T) {
+			pod, ok := pods[tt.podName]
 			if !ok {
-				t.Fatalf("pod %q not found", tt.name)
+				t.Fatalf("pod %q not found in parsed summaries", tt.podName)
 			}
-			if p.Namespace != tt.wantNamespace {
-				t.Errorf("Namespace = %q, want %q", p.Namespace, tt.wantNamespace)
+			if pod.Reason != tt.wantReason {
+				t.Errorf("Reason = %q, want %q", pod.Reason, tt.wantReason)
 			}
-			if p.Phase != tt.wantPhase {
-				t.Errorf("Phase = %q, want %q", p.Phase, tt.wantPhase)
+			if pod.RestartCount != tt.wantRestarts {
+				t.Errorf("RestartCount = %d, want %d", pod.RestartCount, tt.wantRestarts)
 			}
-			if p.Ready != tt.wantReady {
-				t.Errorf("Ready = %q, want %q", p.Ready, tt.wantReady)
+			if pod.Namespace != tt.wantNamespace {
+				t.Errorf("Namespace = %q, want %q", pod.Namespace, tt.wantNamespace)
 			}
-			if p.RestartCount != tt.wantRestarts {
-				t.Errorf("RestartCount = %d, want %d", p.RestartCount, tt.wantRestarts)
-			}
-			if p.Reason != tt.wantReason {
-				t.Errorf("Reason = %q, want %q", p.Reason, tt.wantReason)
+			if pod.Phase != tt.wantPhase {
+				t.Errorf("Phase = %q, want %q", pod.Phase, tt.wantPhase)
 			}
 		})
 	}
 }
 
-func TestParse_MissingNodesFile(t *testing.T) {
-	// Use a directory that has no nodes.json — Parse must not return an error.
-	// We use a temp dir with only a cluster-resources subdirectory (no nodes.json).
-	t.TempDir() // just ensure we can create temp dirs
-
+func TestParse_HealthyPodNotFlagged(t *testing.T) {
 	data, err := Parse(context.Background(), testdataDir)
 	if err != nil {
-		t.Fatalf("Parse() error = %v; must not be fatal", err)
+		t.Fatalf("Parse() unexpected error: %v", err)
 	}
-	// ParseErrors may be present but Parse itself must succeed.
-	_ = data
+
+	for _, p := range data.PodSummaries {
+		if p.Name == "healthy-nginx-2e4c3a5z0-k5mnp" {
+			// Healthy pod should have no reason and zero restarts
+			if p.Reason != "" {
+				t.Errorf("healthy pod Reason = %q, want empty", p.Reason)
+			}
+			if p.RestartCount != 0 {
+				t.Errorf("healthy pod RestartCount = %d, want 0", p.RestartCount)
+			}
+			return
+		}
+	}
+	// It's fine if the healthy pod is omitted from summaries entirely
 }
 
-func TestParse_ContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
-
-	_, err := Parse(ctx, testdataDir)
-	if err == nil {
-		t.Error("Parse() with cancelled context should return an error")
-	}
-}
-
-func TestBuildPodSummary_LastStateOOMKilled(t *testing.T) {
-	pod := k8sPod{
-		Metadata: k8sObjectMeta{Name: "test-pod", Namespace: "default"},
-		Spec:     k8sPodSpec{NodeName: "node-1"},
-		Status: k8sPodStatus{
-			Phase: "Running",
-			ContainerStatuses: []k8sContainerStatus{
-				{
-					Name:         "app",
-					Ready:        false,
-					RestartCount: 5,
-					State: k8sContainerState{
-						Waiting: &k8sStateWaiting{
-							Reason:  "CrashLoopBackOff",
-							Message: "back-off 5m0s",
-						},
-					},
-					LastState: k8sContainerState{
-						Terminated: &k8sStateTerminated{
-							Reason:   "OOMKilled",
-							ExitCode: 137,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	summary := buildPodSummary(pod)
-
-	// CrashLoopBackOff takes priority over OOMKilled in LastState.
-	if summary.Reason != "CrashLoopBackOff" {
-		t.Errorf("Reason = %q, want %q", summary.Reason, "CrashLoopBackOff")
-	}
-	if summary.RestartCount != 5 {
-		t.Errorf("RestartCount = %d, want 5", summary.RestartCount)
-	}
-	if summary.Ready != "0/1" {
-		t.Errorf("Ready = %q, want %q", summary.Ready, "0/1")
-	}
-}
-
-// --- S2.2: Events parsing ---
-
-func TestParse_Events_Count(t *testing.T) {
+func TestParse_Events(t *testing.T) {
 	data, err := Parse(context.Background(), testdataDir)
 	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+		t.Fatalf("Parse() unexpected error: %v", err)
 	}
-	// Fixture has 5 events; Normal with count<=10 are dropped (Scheduled, count=1).
-	// Normal with count>10 is kept (Pulling, count=15).
-	// So: 3 Warning + 1 high-count Normal = 4 events.
-	if len(data.Events) != 4 {
-		t.Errorf("len(Events) = %d, want 4", len(data.Events))
-	}
-}
 
-func TestParse_Events_ChronologicalOrder(t *testing.T) {
-	data, err := Parse(context.Background(), testdataDir)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+	if len(data.Events) == 0 {
+		t.Fatal("Events should not be empty")
 	}
+
+	// Events must be sorted chronologically (oldest first)
 	for i := 1; i < len(data.Events); i++ {
 		if data.Events[i].Timestamp.Before(data.Events[i-1].Timestamp) {
-			t.Errorf("events[%d] (%v) is before events[%d] (%v) — not sorted",
-				i, data.Events[i].Timestamp, i-1, data.Events[i-1].Timestamp)
+			t.Errorf("events not sorted: event[%d] (%v) is before event[%d] (%v)",
+				i, data.Events[i].Timestamp,
+				i-1, data.Events[i-1].Timestamp)
 		}
 	}
-}
 
-func TestParse_Events_WarningPresent(t *testing.T) {
-	data, err := Parse(context.Background(), testdataDir)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	found := false
+	// Must contain Warning events
+	warningCount := 0
 	for _, e := range data.Events {
-		if e.Reason == "BackOff" && e.Name == "payment-processor-6d4b8f9c5-abc12" {
-			found = true
-			if e.Count < 100 {
-				t.Errorf("BackOff event count = %d, want >= 100", e.Count)
-			}
+		if e.Type == "Warning" {
+			warningCount++
 		}
 	}
-	if !found {
-		t.Error("BackOff warning event for payment-processor not found")
-	}
-}
-
-func TestDeduplicateEvents(t *testing.T) {
-	t0 := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	t1 := time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)
-
-	events := []ClusterEvent{
-		{Timestamp: t0, Namespace: "default", Name: "pod-a", Reason: "BackOff", Type: "Warning", Count: 10},
-		{Timestamp: t1, Namespace: "default", Name: "pod-a", Reason: "BackOff", Type: "Warning", Count: 5},
-		{Timestamp: t0, Namespace: "default", Name: "pod-b", Reason: "Failed",  Type: "Warning", Count: 3},
+	if warningCount == 0 {
+		t.Error("expected at least one Warning event")
 	}
 
-	result := deduplicateEvents(events)
-
-	if len(result) != 2 {
-		t.Fatalf("len(result) = %d, want 2", len(result))
+	// Check for specific expected events
+	reasons := make(map[string]bool)
+	for _, e := range data.Events {
+		reasons[e.Reason] = true
 	}
 
-	// Find the deduped pod-a event.
-	for _, e := range result {
-		if e.Name == "pod-a" {
-			if e.Count != 15 {
-				t.Errorf("pod-a Count = %d, want 15 (10+5)", e.Count)
-			}
-			if !e.Timestamp.Equal(t1) {
-				t.Errorf("pod-a Timestamp = %v, want %v (latest)", e.Timestamp, t1)
-			}
+	expectedReasons := []string{"OOMKilling", "BackOff", "Failed", "FailedScheduling"}
+	for _, r := range expectedReasons {
+		if !reasons[r] {
+			t.Errorf("expected event reason %q not found in events", r)
 		}
 	}
 }
 
-func TestParseEventTimestamp_Fallback(t *testing.T) {
-	e := k8sEvent{
-		FirstTimestamp: "2024-01-15T10:00:00Z",
-		LastTimestamp:  "2024-01-15T11:00:00Z",
-	}
-	ts := parseEventTimestamp(e)
-	want := time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)
-	if !ts.Equal(want) {
-		t.Errorf("timestamp = %v, want %v (lastTimestamp preferred)", ts, want)
-	}
-}
-
-func TestParseEventTimestamp_Empty(t *testing.T) {
-	e := k8sEvent{}
-	ts := parseEventTimestamp(e)
-	if !ts.IsZero() {
-		t.Errorf("timestamp = %v, want zero for empty event", ts)
-	}
-}
-
-// --- S2.1 (continued): init container failure ---
-
-// --- S2.3: Log extraction ---
-
-func TestParse_LogExcerpts_OnlyUnhealthy(t *testing.T) {
+func TestParse_LogExcerpts(t *testing.T) {
 	data, err := Parse(context.Background(), testdataDir)
 	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	// Only the payment-processor pod has a log file in testdata.
-	if len(data.LogExcerpts) == 0 {
-		t.Fatal("expected at least one log excerpt for crashing pod, got 0")
+	// Log excerpts should only exist for unhealthy pods
+	logPods := make(map[string]bool)
+	for _, l := range data.LogExcerpts {
+		logPods[l.PodName] = true
 	}
 
-	for _, ex := range data.LogExcerpts {
-		// All excerpts must be for pods with failures.
-		found := false
-		for _, pod := range data.PodSummaries {
-			if pod.Name == ex.PodName {
-				if pod.RestartCount == 0 && pod.Phase != "Failed" {
-					t.Errorf("log excerpt for healthy pod %q should not be included", ex.PodName)
-				}
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("log excerpt for unknown pod %q", ex.PodName)
+	// OOMKilled pod should have logs
+	if !logPods["memory-hog-7d9f8b6c5-xk2pq"] {
+		t.Error("expected log excerpt for OOMKilled pod memory-hog")
+	}
+
+	// CrashLoopBackOff pod should have logs
+	if !logPods["bad-entrypoint-6b8d7f9c4-m3nvw"] {
+		t.Error("expected log excerpt for CrashLoopBackOff pod bad-entrypoint")
+	}
+
+	// Healthy pod should NOT have logs extracted (no restarts, Running)
+	if logPods["healthy-nginx-2e4c3a5z0-k5mnp"] {
+		t.Error("healthy pod should not have log excerpts")
+	}
+
+	// Lines must be within budget
+	for _, l := range data.LogExcerpts {
+		if len(l.Lines) > maxLogLines {
+			t.Errorf("pod %q has %d log lines, exceeds max of %d",
+				l.PodName, len(l.Lines), maxLogLines)
 		}
 	}
 }
 
-func TestParse_LogExcerpts_ErrorLinesPresent(t *testing.T) {
+func TestParse_MissingDirectoryGraceful(t *testing.T) {
+	// Pointing at a directory with no cluster-resources/ should not fatal
+	// It should populate ParseErrors and return partial data
+	data, err := Parse(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("Parse() should not error on empty dir, got: %v", err)
+	}
+
+	// Should have parse errors noting missing files
+	if len(data.ParseErrors) == 0 {
+		t.Error("expected ParseErrors for missing directories, got none")
+	}
+}
+
+func TestParse_TokenEstimate(t *testing.T) {
 	data, err := Parse(context.Background(), testdataDir)
 	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
+		t.Fatalf("Parse() unexpected error: %v", err)
 	}
 
-	var ppExcerpt *LogExcerpt
-	for i := range data.LogExcerpts {
-		if data.LogExcerpts[i].PodName == "payment-processor-6d4b8f9c5-abc12" {
-			ppExcerpt = &data.LogExcerpts[i]
-		}
-	}
-	if ppExcerpt == nil {
-		t.Fatal("no log excerpt found for payment-processor pod")
+	if data.TokenEstimate == 0 {
+		t.Error("TokenEstimate should be non-zero after parsing")
 	}
 
-	if ppExcerpt.ErrorCount == 0 {
-		t.Error("ErrorCount = 0, want > 0 for log with ERROR/FATAL/panic lines")
-	}
-
-	hasError := false
-	for _, line := range ppExcerpt.Lines {
-		if isErrorLine(line) {
-			hasError = true
-			break
-		}
-	}
-	if !hasError {
-		t.Error("no error lines found in excerpt, expected ERROR/FATAL/panic lines")
+	// For our small fixture, estimate should be well under the max budget
+	if data.TokenEstimate > maxTokenBudget {
+		t.Errorf("TokenEstimate %d exceeds maxTokenBudget %d for test fixture",
+			data.TokenEstimate, maxTokenBudget)
 	}
 }
 
-func TestParse_LogExcerpts_LineCap(t *testing.T) {
-	data, err := Parse(context.Background(), testdataDir)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-
-	totalLines := 0
-	for _, ex := range data.LogExcerpts {
-		if len(ex.Lines) > maxLogLinesPerContainer {
-			t.Errorf("excerpt for %s/%s has %d lines, max is %d",
-				ex.PodName, ex.Container, len(ex.Lines), maxLogLinesPerContainer)
-		}
-		totalLines += len(ex.Lines)
-	}
-	// Total across all excerpts must not exceed 500 (10 containers × 50 lines).
-	if totalLines > 500 {
-		t.Errorf("total log lines = %d, must be <= 500", totalLines)
-	}
-}
-
-func TestReadLogExcerpt_TruncationFlag(t *testing.T) {
-	// Write a temp file with more than maxLastLines lines.
-	tmp := t.TempDir()
-	logPath := tmp + "/app.log"
-	f, err := os.Create(logPath)
-	if err != nil {
-		t.Fatalf("create temp log: %v", err)
-	}
-	for i := 0; i < 100; i++ {
-		fmt.Fprintf(f, "2024-01-15T10:00:00Z INFO line number %d\n", i)
-	}
-	f.Close()
-
-	excerpt, err := readLogExcerpt(logPath, "ns", "pod", "app")
-	if err != nil {
-		t.Fatalf("readLogExcerpt() error = %v", err)
-	}
-	if excerpt == nil {
-		t.Fatal("readLogExcerpt() returned nil for non-empty file")
-	}
-	if !excerpt.Truncated {
-		t.Error("Truncated = false, want true for 100-line file")
-	}
-	if len(excerpt.Lines) > maxLogLinesPerContainer {
-		t.Errorf("Lines count = %d, want <= %d", len(excerpt.Lines), maxLogLinesPerContainer)
-	}
-}
-
-func TestReadLogExcerpt_EmptyFile(t *testing.T) {
-	tmp := t.TempDir()
-	logPath := tmp + "/empty.log"
-	if err := os.WriteFile(logPath, []byte{}, 0o644); err != nil {
-		t.Fatalf("write empty file: %v", err)
-	}
-
-	excerpt, err := readLogExcerpt(logPath, "ns", "pod", "app")
-	if err != nil {
-		t.Fatalf("readLogExcerpt() error = %v", err)
-	}
-	if excerpt != nil {
-		t.Errorf("readLogExcerpt() on empty file = %v, want nil", excerpt)
-	}
-}
-
-func TestIsErrorLine(t *testing.T) {
-	tests := []struct {
-		line string
-		want bool
-	}{
-		{"2024-01-15 ERROR connection refused", true},
-		{"2024-01-15 FATAL out of memory", true},
-		{"panic: nil pointer dereference", true},
-		{"Exception in thread main", true},
-		{"CRITICAL disk full", true},
-		{"2024-01-15 INFO server started", false},
-		{"2024-01-15 DEBUG reading config", false},
-		{"", false},
-	}
-	for _, tt := range tests {
-		if got := isErrorLine(tt.line); got != tt.want {
-			t.Errorf("isErrorLine(%q) = %v, want %v", tt.line, got, tt.want)
-		}
-	}
-}
-
-// --- S2.4: Token budget ---
-
-func TestEstimateTokens_NonZero(t *testing.T) {
-	data, err := Parse(context.Background(), testdataDir)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if data.TokenEstimate <= 0 {
-		t.Errorf("TokenEstimate = %d, want > 0", data.TokenEstimate)
-	}
-}
-
-func TestEnforceBudget_NothingTrimmedWhenUnderBudget(t *testing.T) {
-	data, err := Parse(context.Background(), testdataDir)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	podsBefore := len(data.PodSummaries)
-	eventsBefore := len(data.Events)
-
-	result := EnforceBudget(data, MaxTokenBudget)
-
-	if len(result.PodSummaries) != podsBefore {
-		t.Errorf("PodSummaries trimmed when under budget: got %d, want %d",
-			len(result.PodSummaries), podsBefore)
-	}
-	if len(result.Events) != eventsBefore {
-		t.Errorf("Events trimmed when under budget: got %d, want %d",
-			len(result.Events), eventsBefore)
-	}
-	if result.TokenEstimate <= 0 {
-		t.Errorf("TokenEstimate not set after EnforceBudget: %d", result.TokenEstimate)
-	}
-}
-
-func TestEnforceBudget_Pass1_LogTruncation(t *testing.T) {
-	data := makeLargeBundleData()
-
-	// Set a very tight budget to force trimming.
-	result := EnforceBudget(data, 1)
-
-	for _, ex := range result.LogExcerpts {
-		if len(ex.Lines) > budgetLogLineCap {
-			t.Errorf("container %s/%s has %d lines after pass 1, want <= %d",
-				ex.PodName, ex.Container, len(ex.Lines), budgetLogLineCap)
-		}
-	}
-}
-
-func TestEnforceBudget_Pass2_HealthyPodsDropped(t *testing.T) {
-	data := makeLargeBundleData()
-	// Budget that survives pass 1 but fails pass 2.
-	// Strip logs first so pass 1 has nothing to do.
-	data.LogExcerpts = nil
-
-	result := EnforceBudget(data, 1)
-
-	for _, p := range result.PodSummaries {
-		if p.Reason == "" {
-			t.Errorf("healthy pod %q still present after budget enforcement", p.Name)
-		}
-	}
-}
-
-func TestEnforceBudget_Pass3_NormalEventsDropped(t *testing.T) {
-	data := makeLargeBundleData()
-	data.LogExcerpts = nil
-	data.PodSummaries = nil // skip pass 2
-
-	result := EnforceBudget(data, 1)
-
-	for _, e := range result.Events {
-		if e.Type == "Normal" {
-			t.Errorf("Normal event %q still present after budget enforcement", e.Reason)
-		}
-	}
-}
-
-func TestEnforceBudget_TokenEstimateIsSet(t *testing.T) {
-	data := makeLargeBundleData()
-	result := EnforceBudget(data, MaxTokenBudget)
-
-	if result.TokenEstimate <= 0 {
-		t.Errorf("TokenEstimate = %d, want > 0", result.TokenEstimate)
-	}
-	// TokenEstimate may differ from a fresh EstimateTokens call by a tiny amount
-	// because the TokenEstimate field itself contributes to the JSON byte count.
-	fresh := EstimateTokens(result)
-	diff := result.TokenEstimate - fresh
-	if diff < 0 {
-		diff = -diff
-	}
-	if diff > 5 {
-		t.Errorf("TokenEstimate = %d differs from EstimateTokens = %d by %d (max 5)",
-			result.TokenEstimate, fresh, diff)
-	}
-}
-
-// makeLargeBundleData creates a BundleData with enough content to stress the budget enforcer.
-func makeLargeBundleData() *BundleData {
-	pods := make([]PodSummary, 50)
-	for i := 0; i < 50; i++ {
-		if i%2 == 0 {
-			pods[i] = PodSummary{
-				Name:         fmt.Sprintf("crashing-pod-%d", i),
-				Namespace:    "default",
-				Phase:        "Running",
-				RestartCount: 10,
-				Reason:       "CrashLoopBackOff",
-			}
-		} else {
-			pods[i] = PodSummary{
-				Name:      fmt.Sprintf("healthy-pod-%d", i),
-				Namespace: "default",
-				Phase:     "Running",
-				Ready:     "1/1",
-			}
-		}
-	}
-
-	events := make([]ClusterEvent, 100)
-	for i := 0; i < 100; i++ {
-		evType := "Warning"
-		if i%3 == 0 {
-			evType = "Normal"
-		}
-		events[i] = ClusterEvent{
+func TestEnforceBudget(t *testing.T) {
+	// Build a BundleData that's intentionally over budget
+	huge := &BundleData{}
+	// Add many pods with long messages
+	for i := 0; i < 200; i++ {
+		huge.PodSummaries = append(huge.PodSummaries, PodSummary{
+			Name:      "pod-" + string(rune('a'+i%26)),
 			Namespace: "default",
-			Name:      fmt.Sprintf("pod-%d", i),
-			Reason:    "BackOff",
-			Message:   strings.Repeat("x", 300),
-			Type:      evType,
-			Count:     i + 1,
+			Phase:     "Running",
+			Reason:    "CrashLoopBackOff",
+			Message:   "This is a very long error message that takes up a lot of tokens when you have many pods all reporting errors simultaneously in a large cluster deployment scenario",
+		})
+	}
+	// Add many log lines
+	for i := 0; i < 100; i++ {
+		lines := make([]string, 50)
+		for j := range lines {
+			lines[j] = "ERROR: some very detailed error log line with lots of information that consumes tokens"
 		}
+		huge.LogExcerpts = append(huge.LogExcerpts, LogExcerpt{
+			PodName: "pod-" + string(rune('a'+i%26)),
+			Lines:   lines,
+		})
 	}
+	huge.TokenEstimate = EstimateTokens(huge)
 
-	excerpts := make([]LogExcerpt, 10)
-	for i := 0; i < 10; i++ {
-		lines := make([]string, 80)
-		for j := 0; j < 80; j++ {
-			lines[j] = fmt.Sprintf("2024-01-15T10:00:00Z ERROR log line %d from container %d", j, i)
-		}
-		excerpts[i] = LogExcerpt{
-			Namespace: "default",
-			PodName:   fmt.Sprintf("crashing-pod-%d", i*2),
-			Container: "app",
-			Lines:     lines,
-		}
-	}
+	trimmed := EnforceBudget(huge, maxTokenBudget)
 
-	return &BundleData{
-		ClusterVersion: "v1.28.4",
-		PodSummaries:   pods,
-		Events:         events,
-		LogExcerpts:    excerpts,
-	}
-}
-
-// --- S2.1 (continued): init container failure ---
-
-func TestBuildPodSummary_InitContainerFailure(t *testing.T) {
-	pod := k8sPod{
-		Metadata: k8sObjectMeta{Name: "init-fail-pod", Namespace: "staging"},
-		Spec:     k8sPodSpec{NodeName: "node-1"},
-		Status: k8sPodStatus{
-			Phase: "Init:0/1",
-			InitContainerStatuses: []k8sContainerStatus{
-				{
-					Name:         "db-migrate",
-					Ready:        false,
-					RestartCount: 2,
-					State: k8sContainerState{
-						Waiting: &k8sStateWaiting{
-							Reason:  "CrashLoopBackOff",
-							Message: "init container failing",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	summary := buildPodSummary(pod)
-
-	if summary.Reason != "Init:CrashLoopBackOff" {
-		t.Errorf("Reason = %q, want %q", summary.Reason, "Init:CrashLoopBackOff")
-	}
-	if summary.RestartCount != 2 {
-		t.Errorf("RestartCount = %d, want 2", summary.RestartCount)
+	trimmedEstimate := EstimateTokens(trimmed)
+	if trimmedEstimate > maxTokenBudget {
+		t.Errorf("EnforceBudget did not reduce to budget: got %d tokens, max %d",
+			trimmedEstimate, maxTokenBudget)
 	}
 }

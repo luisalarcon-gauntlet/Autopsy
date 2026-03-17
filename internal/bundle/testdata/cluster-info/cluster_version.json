@@ -1,9 +1,1 @@
-{
-  "serverVersion": {
-    "major": "1",
-    "minor": "28",
-    "gitVersion": "v1.28.4",
-    "gitCommit": "bae2c62678db2b5053817bc97181fcc2e8388103",
-    "platform": "linux/amd64"
-  }
-}
+{"gitVersion":"v1.28.4"}

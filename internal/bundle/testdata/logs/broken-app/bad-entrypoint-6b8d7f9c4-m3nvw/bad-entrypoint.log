@@ -1,0 +1,3 @@
+2024-01-15T10:19:45Z INFO  Container starting
+2024-01-15T10:19:45Z ERROR exec: "/bad-entrypoint.sh": stat /bad-entrypoint.sh: no such file or directory
+2024-01-15T10:19:45Z FATAL entrypoint not found, container exiting with code 1

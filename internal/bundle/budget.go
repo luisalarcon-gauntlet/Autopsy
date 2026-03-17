@@ -9,6 +9,13 @@ const (
 	// MaxTokenBudget is the hard upper limit on tokens passed to Claude.
 	MaxTokenBudget = 80_000
 
+	// maxTokenBudget is an unexported alias used by in-package tests.
+	maxTokenBudget = MaxTokenBudget
+
+	// maxLogLines is the per-container log line cap exposed to in-package tests.
+	// Matches maxLogLinesPerContainer defined in logs.go.
+	maxLogLines = maxLogLinesPerContainer
+
 	// budgetLogLineCap is the per-container line count after the first trim pass.
 	budgetLogLineCap = 20
 
