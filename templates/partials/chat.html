@@ -11,3 +11,17 @@
   </div>
 </div>
 {{end}}
+
+{{define "chat_suggestions"}}
+{{- /* Data: []string — list of suggested question strings */ -}}
+<div class="px-4 pb-3 pt-2 flex flex-wrap gap-2">
+  {{range .}}
+  <button type="button"
+          class="suggestion-pill text-xs bg-blue-50 text-blue-700 border border-blue-200
+                 rounded-full px-3 py-1.5 hover:bg-blue-100 active:bg-blue-200 transition-colors text-left"
+          data-question="{{.}}">
+    {{.}}
+  </button>
+  {{end}}
+</div>
+{{end}}

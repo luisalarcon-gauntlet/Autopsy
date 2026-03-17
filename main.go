@@ -42,9 +42,10 @@ func main() {
 	mux.HandleFunc("GET /stream/{sessionID}/timeline", h.HandleTimelineSSE)
 	mux.HandleFunc("GET /stream/{sessionID}/rca", h.HandleRCASSE)
 
-	// Chat (sync post + streaming SSE endpoint)
+	// Chat (sync post + streaming SSE endpoint + suggestions)
 	mux.HandleFunc("POST /chat/{sessionID}", h.HandleChat)
 	mux.HandleFunc("GET /chat/{sessionID}/stream", h.HandleChatSSE)
+	mux.HandleFunc("GET /suggestions/{sessionID}", h.HandleSuggestions)
 
 	// Wrap mux with request logging and panic recovery.
 	handler := server.RequestLogger(server.PanicRecovery(mux))

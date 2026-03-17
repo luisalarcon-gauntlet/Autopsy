@@ -31,7 +31,7 @@
     <div hx-ext="sse"
          sse-connect="/stream/{{.SessionID}}/triage"
          hx-on:htmx:sse-open="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-blue-400 animate-pulse'"
-         hx-on:htmx:sse-close="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-green-400'">
+         hx-on:htmx:sse-close="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-green-400'; loadSuggestions()">
       <div id="triage-content"
            sse-swap="triage-update"
            hx-swap="innerHTML">
@@ -137,6 +137,8 @@
         Chat is available after analysis completes.
       </div>
     </div>
+    <!-- Suggested questions populated after triage completes -->
+    <div id="chat-suggestions" class="hidden border-t border-gray-50"></div>
     <div class="border-t border-gray-100 p-4">
       <form id="chat-form" class="flex gap-2" onsubmit="return handleChatSubmit(event)">
         <input type="text"
@@ -279,6 +281,29 @@ function addCopyButtons(container) {
     });
   });
 }
+
+// ── Suggested questions ───────────────────────────────────────────────────────
+function loadSuggestions() {
+  fetch('/suggestions/' + chatSessionID)
+    .then(function(r) { return r.ok ? r.text() : ''; })
+    .then(function(html) {
+      if (!html || !html.trim()) return;
+      const el = document.getElementById('chat-suggestions');
+      if (el) { el.innerHTML = html; el.classList.remove('hidden'); }
+    })
+    .catch(function() { /* suggestions are optional */ });
+}
+
+// Suggestion pill click: populate input and submit immediately.
+document.addEventListener('click', function(e) {
+  const pill = e.target.closest('.suggestion-pill');
+  if (!pill || chatStreaming) return;
+  const q = pill.dataset.question;
+  if (!q) return;
+  const sugg = document.getElementById('chat-suggestions');
+  if (sugg) sugg.classList.add('hidden');
+  sendChatMessage(q);
+});
 
 // ── Chat streaming via native EventSource ─────────────────────────────────────
 const chatSessionID = {{.SessionID | printf "%q"}};

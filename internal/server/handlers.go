@@ -475,6 +475,69 @@ func (h *Handler) HandleChatSSE(w http.ResponseWriter, r *http.Request) {
 	sse.SendEvent("done", "{}")
 }
 
+// HandleSuggestions returns rendered suggested starter question pills for the
+// chat panel, based on the cached triage result for the session.
+func (h *Handler) HandleSuggestions(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var triage *analysis.TriageResult
+	if cached, hit := h.cache.Get(sess.BundleSHA256); hit && cached.Triage != nil {
+		triage = cached.Triage
+	}
+
+	questions := generateSuggestedQuestions(triage)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.tmpl.ExecuteTemplate(w, "chat_suggestions", questions); err != nil {
+		slog.Error("suggestions template failed", "err", err)
+	}
+}
+
+// generateSuggestedQuestions produces up to 4 context-aware question strings
+// based on the top issues in the triage result. It always includes two
+// canonical remediation questions as anchors.
+func generateSuggestedQuestions(triage *analysis.TriageResult) []string {
+	anchors := []string{"What should I fix first?", "Give me all the kubectl commands to remediate this"}
+
+	if triage == nil {
+		return anchors
+	}
+
+	var contextual []string
+	for _, issue := range triage.TopIssues {
+		if len(contextual) >= 2 {
+			break
+		}
+		pod := issue.AffectedPod
+		if pod == "" {
+			pod = "this workload"
+		}
+		switch issue.Category {
+		case "oom":
+			contextual = append(contextual, fmt.Sprintf("Why is %s getting OOMKilled?", pod))
+		case "crash-loop":
+			contextual = append(contextual, fmt.Sprintf("What is causing %s to crash?", pod))
+		case "image-pull":
+			contextual = append(contextual, fmt.Sprintf("How do I fix the image pull error on %s?", pod))
+		case "config":
+			contextual = append(contextual, fmt.Sprintf("What config is missing for %s?", pod))
+		case "resource":
+			contextual = append(contextual, fmt.Sprintf("Why is %s pending?", pod))
+		}
+	}
+
+	questions := append(contextual, anchors...)
+	if len(questions) > 4 {
+		questions = questions[:4]
+	}
+	return questions
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // bundleDataOrEmpty returns the session's parsed BundleData, falling back to
