@@ -159,6 +159,17 @@ func (h *Handler) HandleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok","service":"autopsy"}`))
 }
 
+// HandleDebugCache returns a JSON snapshot of the analysis cache.
+// Only available when not in production (it exposes internal state).
+func (h *Handler) HandleDebugCache(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	snapshot := h.cache.Snapshot()
+	json.NewEncoder(w).Encode(map[string]any{
+		"count":   len(snapshot),
+		"entries": snapshot,
+	})
+}
+
 // HandleTriageSSE streams Phase 1 (triage) analysis results via SSE.
 // It checks the cache first and only calls Claude if necessary.
 // The rendered risk_card HTML partial is sent as the "triage-update" event.
@@ -180,9 +191,11 @@ func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Check analysis cache (keyed by bundle SHA256).
 	var triageResult *analysis.TriageResult
+	fromCache := false
 	if cached, hit := h.cache.Get(sess.BundleSHA256); hit && cached.Triage != nil {
 		slog.Info("triage cache hit", "sha256_prefix", sess.BundleSHA256[:8])
 		triageResult = cached.Triage
+		fromCache = true
 	} else {
 		slog.Info("triage cache miss, running analysis", "sha256_prefix", sess.BundleSHA256[:8])
 		data := bundleDataOrEmpty(sess)
@@ -205,7 +218,11 @@ func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buf bytes.Buffer
-	if err := h.tmpl.ExecuteTemplate(&buf, "risk_card", triageResult); err != nil {
+	triageData := struct {
+		*analysis.TriageResult
+		FromCache bool
+	}{triageResult, fromCache}
+	if err := h.tmpl.ExecuteTemplate(&buf, "risk_card", triageData); err != nil {
 		slog.Error("failed to render risk_card template", "err", err)
 		sendErrorPartial(sse, "triage-update", "Failed to render results")
 	} else {

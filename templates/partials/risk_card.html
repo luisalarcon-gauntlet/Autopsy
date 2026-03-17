@@ -1,5 +1,13 @@
 {{define "risk_card"}}
-{{- /* Data: *analysis.TriageResult */ -}}
+{{- /* Data: struct{ *analysis.TriageResult; FromCache bool } */ -}}
+{{if .FromCache}}
+<div class="px-6 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-1.5">
+  <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/>
+  </svg>
+  <span class="text-xs text-gray-500">Cached result</span>
+</div>
+{{end}}
 <div class="p-6 space-y-5">
 
   {{/* ── Severity score gauge + health badge ── */}}

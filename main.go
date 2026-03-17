@@ -47,6 +47,9 @@ func main() {
 	mux.HandleFunc("GET /chat/{sessionID}/stream", h.HandleChatSSE)
 	mux.HandleFunc("GET /suggestions/{sessionID}", h.HandleSuggestions)
 
+	// Debug (cache inspection — dev only)
+	mux.HandleFunc("GET /debug/cache", h.HandleDebugCache)
+
 	// Wrap mux with request logging and panic recovery.
 	handler := server.RequestLogger(server.PanicRecovery(mux))
 

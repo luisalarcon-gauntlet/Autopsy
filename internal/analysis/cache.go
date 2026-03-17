@@ -68,6 +68,40 @@ func (c *Cache) Len() int {
 	return len(c.entries)
 }
 
+// CacheSnapshot holds a point-in-time view of a single cache entry for the debug endpoint.
+type CacheSnapshot struct {
+	SHA256Prefix string
+	CachedAt     time.Time
+	AgeSeconds   float64
+	HasTriage    bool
+	HasTimeline  bool
+	HasRCA       bool
+}
+
+// Snapshot returns a point-in-time view of all cache entries for debug inspection.
+func (c *Cache) Snapshot() []CacheSnapshot {
+	now := time.Now()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	out := make([]CacheSnapshot, 0, len(c.entries))
+	for sha, entry := range c.entries {
+		prefix := sha
+		if len(prefix) > 8 {
+			prefix = prefix[:8]
+		}
+		out = append(out, CacheSnapshot{
+			SHA256Prefix: prefix,
+			CachedAt:     entry.CachedAt,
+			AgeSeconds:   now.Sub(entry.CachedAt).Seconds(),
+			HasTriage:    entry.Triage != nil,
+			HasTimeline:  entry.Timeline != nil,
+			HasRCA:       entry.RCAText != "",
+		})
+	}
+	return out
+}
+
 // cleanupLoop runs every 30 minutes and evicts expired cache entries.
 func (c *Cache) cleanupLoop() {
 	ticker := time.NewTicker(30 * time.Minute)
