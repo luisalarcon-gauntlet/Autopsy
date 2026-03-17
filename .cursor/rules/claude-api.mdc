@@ -1,0 +1,317 @@
+---
+description: Claude API integration rules for BundleIQ. Apply to analysis/ package files.
+globs: ["internal/analysis/**/*.go"]
+alwaysApply: true
+---
+
+# Claude API Integration Rules — BundleIQ
+
+## SDK Import
+```go
+import "github.com/anthropics/anthropic-sdk-go"
+```
+Always use the official `github.com/anthropics/anthropic-sdk-go`. Never use raw `net/http` calls to the API.
+
+## Model
+Always use: `anthropic.ModelClaudeSonnet4_5_20250929`
+Never hardcode model strings as raw strings — use the SDK constant.
+
+## Client Initialization (in main.go, passed to handlers)
+```go
+// Client reads ANTHROPIC_API_KEY from environment automatically
+client := anthropic.NewClient()
+```
+The client is initialized ONCE in main.go and passed to the analyzer. Never initialize it per-request.
+
+## Non-Streaming Call Pattern (Triage, Timeline)
+```go
+func RunTriage(ctx context.Context, client *anthropic.Client, data *bundle.BundleData) (*TriageResult, error) {
+    prompt := BuildTriagePrompt(data)
+    
+    msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+        Model:     anthropic.ModelClaudeSonnet4_5_20250929,
+        MaxTokens: 1024,
+        System: []anthropic.TextBlockParam{
+            {Text: TriageSystemPrompt},
+        },
+        Messages: []anthropic.MessageParam{
+            anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+        },
+    })
+    if err != nil {
+        return nil, fmt.Errorf("RunTriage claude call: %w", err)
+    }
+    
+    // Extract text from response
+    if len(msg.Content) == 0 {
+        return nil, fmt.Errorf("RunTriage: empty response from Claude")
+    }
+    text := msg.Content[0].Text
+    
+    // Parse JSON — Claude returns JSON inside the text
+    var result TriageResult
+    if err := json.Unmarshal([]byte(text), &result); err != nil {
+        // Try to extract JSON from markdown code blocks
+        text = extractJSONFromMarkdown(text)
+        if err := json.Unmarshal([]byte(text), &result); err != nil {
+            return nil, fmt.Errorf("RunTriage parse JSON: %w, raw: %.200s", err, text)
+        }
+    }
+    
+    return &result, nil
+}
+```
+
+## Streaming Call Pattern (RCA)
+```go
+func RunRCA(ctx context.Context, client *anthropic.Client, data *bundle.BundleData, w io.Writer) error {
+    prompt := BuildRCAPrompt(data)
+    
+    stream := client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
+        Model:     anthropic.ModelClaudeSonnet4_5_20250929,
+        MaxTokens: 4096,
+        System: []anthropic.TextBlockParam{
+            {Text: RCASystemPrompt},
+        },
+        Messages: []anthropic.MessageParam{
+            anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+        },
+    })
+    
+    for stream.Next() {
+        event := stream.Current()
+        
+        // Check context cancellation on each iteration
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+        }
+        
+        switch delta := event.Delta.(type) {
+        case anthropic.ContentBlockDeltaEventDelta:
+            if delta.Type == "text_delta" {
+                if _, err := w.Write([]byte(delta.Text)); err != nil {
+                    return fmt.Errorf("write to SSE: %w", err)
+                }
+            }
+        }
+    }
+    
+    if err := stream.Err(); err != nil {
+        return fmt.Errorf("RunRCA stream: %w", err)
+    }
+    
+    return nil
+}
+```
+
+## Error Handling for API Errors
+```go
+func classifyAPIError(err error) (userMsg string, shouldRetry bool) {
+    var apiErr *anthropic.Error
+    if !errors.As(err, &apiErr) {
+        return "Analysis service unreachable. Please try again.", false
+    }
+    
+    switch apiErr.StatusCode {
+    case 429:
+        return "Analysis rate limited. Please wait 60 seconds and retry.", false
+    case 529:
+        return "Analysis service overloaded. Retrying once...", true
+    case 401:
+        return "API key invalid or missing.", false
+    case 400:
+        return "Analysis request was malformed (this is a bug, please report it).", false
+    default:
+        return fmt.Sprintf("Analysis failed (HTTP %d). Please retry.", apiErr.StatusCode), false
+    }
+}
+```
+
+## Retry Logic (529 only)
+```go
+func withRetry(ctx context.Context, fn func() error) error {
+    err := fn()
+    if err == nil {
+        return nil
+    }
+    
+    var apiErr *anthropic.Error
+    if errors.As(err, &apiErr) && apiErr.StatusCode == 529 {
+        slog.Warn("Claude overloaded, retrying in 2s")
+        select {
+        case <-time.After(2 * time.Second):
+        case <-ctx.Done():
+            return ctx.Err()
+        }
+        return fn() // one retry only
+    }
+    
+    return err
+}
+```
+
+## Prompt Construction Rules
+
+### System Prompts (defined as package-level constants)
+```go
+const TriageSystemPrompt = `You are an expert Kubernetes SRE analyzing a support bundle.
+You will receive structured data extracted from a Kubernetes cluster support bundle.
+Your job is to identify and prioritize issues.
+
+IMPORTANT: Respond with ONLY valid JSON. No markdown, no explanation, no code blocks.
+The JSON must exactly match the schema provided in the user message.`
+
+const RCASystemPrompt = `You are an expert Kubernetes SRE performing root cause analysis.
+You will receive structured data from a Kubernetes support bundle.
+Your job is to identify the root cause of failures and provide actionable remediation steps.
+
+Format your response as structured markdown with these EXACT sections:
+## Root Cause
+## Evidence  
+## Fix Steps
+## Prevention
+
+In Fix Steps, always provide exact kubectl commands. Be specific about namespace and resource names.`
+```
+
+### User Prompt Construction
+```go
+func BuildTriagePrompt(data *bundle.BundleData) string {
+    // Serialize the BundleData to JSON for Claude
+    dataJSON, _ := json.MarshalIndent(data, "", "  ")
+    
+    return fmt.Sprintf(`Analyze this Kubernetes support bundle data and return a JSON triage report.
+
+Bundle data:
+%s
+
+Return JSON matching exactly this schema:
+{
+    "severityScore": <0-100, where 100 is completely broken>,
+    "summary": "<1-2 sentence overview of cluster health>",
+    "clusterHealth": "<one of: critical|degraded|warning|healthy>",
+    "affectedNamespaces": ["<namespace>", ...],
+    "topIssues": [
+        {
+            "title": "<short title>",
+            "severity": "<critical|high|medium|low>",
+            "affectedPod": "<pod name or empty string>",
+            "category": "<oom|image-pull|crash-loop|config|resource|network|unknown>"
+        }
+    ]
+}
+
+Return ONLY the JSON. No other text.`, string(dataJSON))
+}
+```
+
+### Token Budget Check Before API Calls
+```go
+// In analyzer.go, before any Claude call:
+func checkPromptBudget(prompt string, maxChars int) error {
+    if len(prompt) > maxChars {
+        return fmt.Errorf("prompt too large: %d chars (max %d). Token budget enforcement may have failed", 
+            len(prompt), maxChars)
+    }
+    return nil
+}
+
+// Phase budgets (in characters, roughly 4 chars per token):
+// Triage:  40,000 chars max
+// Timeline: 40,000 chars max
+// RCA:     60,000 chars max
+// Chat:    20,000 chars max (per message, excluding history)
+```
+
+## Chat Conversation Pattern
+```go
+func RunChat(ctx context.Context, client *anthropic.Client, data *bundle.BundleData, history []ChatMessage, newMsg string) (string, error) {
+    // Build system prompt with bundle context
+    systemPrompt := fmt.Sprintf(`You are an expert Kubernetes SRE analyzing a specific support bundle.
+Only reference information that appears in the bundle data below.
+If asked about something not in the bundle, say "I don't see that in this bundle."
+Be concise and actionable.
+
+Bundle summary:
+%s`, buildChatBundleContext(data))
+    
+    // Build message history
+    messages := make([]anthropic.MessageParam, 0, len(history)+1)
+    for _, h := range history {
+        if h.Role == "user" {
+            messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(h.Content)))
+        } else {
+            messages = append(messages, anthropic.NewAssistantMessage(anthropic.NewTextBlock(h.Content)))
+        }
+    }
+    messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(newMsg)))
+    
+    msg, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+        Model:     anthropic.ModelClaudeSonnet4_5_20250929,
+        MaxTokens: 2048,
+        System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
+        Messages:  messages,
+    })
+    if err != nil {
+        return "", fmt.Errorf("RunChat: %w", err)
+    }
+    
+    if len(msg.Content) == 0 {
+        return "", fmt.Errorf("RunChat: empty response")
+    }
+    
+    return msg.Content[0].Text, nil
+}
+
+// Build compact bundle context for chat (< 2000 chars)
+func buildChatBundleContext(data *bundle.BundleData) string {
+    var sb strings.Builder
+    fmt.Fprintf(&sb, "Cluster: %s\n", data.ClusterVersion)
+    fmt.Fprintf(&sb, "Nodes: %d\n", len(data.NodeSummaries))
+    fmt.Fprintf(&sb, "Pods with issues:\n")
+    for _, p := range data.PodSummaries {
+        if p.Reason != "" {
+            fmt.Fprintf(&sb, "  - %s/%s: %s (restarts: %d)\n", p.Namespace, p.Name, p.Reason, p.RestartCount)
+        }
+    }
+    // Add top 5 events
+    fmt.Fprintf(&sb, "Recent warning events:\n")
+    count := 0
+    for _, e := range data.Events {
+        if e.Type == "Warning" && count < 5 {
+            fmt.Fprintf(&sb, "  - %s: %s\n", e.Reason, e.Message)
+            count++
+        }
+    }
+    return sb.String()
+}
+```
+
+## JSON Extraction Utility
+```go
+// Claude sometimes wraps JSON in markdown code blocks. Handle both cases.
+func extractJSONFromMarkdown(s string) string {
+    // Try to find JSON block
+    start := strings.Index(s, "```json")
+    if start != -1 {
+        s = s[start+7:]
+        end := strings.Index(s, "```")
+        if end != -1 {
+            return strings.TrimSpace(s[:end])
+        }
+    }
+    // Try plain ``` block
+    start = strings.Index(s, "```")
+    if start != -1 {
+        s = s[start+3:]
+        end := strings.Index(s, "```")
+        if end != -1 {
+            return strings.TrimSpace(s[:end])
+        }
+    }
+    // Return as-is, trimmed
+    return strings.TrimSpace(s)
+}
+```

@@ -1,0 +1,22 @@
+# Built binary
+autopsy
+autopsy.exe
+
+# Environment
+.env
+
+# Bundle files (can be large)
+*.tar.gz
+*.tgz
+
+# Temp directories
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo

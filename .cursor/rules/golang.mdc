@@ -1,0 +1,250 @@
+---
+description: Go code standards for BundleIQ. Apply to all .go files.
+globs: ["**/*.go"]
+alwaysApply: true
+---
+
+# Go Code Rules — BundleIQ
+
+## Package Structure
+- `internal/` packages are not importable externally — keep business logic here
+- `main.go` only does: parse config, initialize dependencies, start server
+- No circular imports. Dependency direction: `server` → `analysis` → `bundle` → (stdlib only)
+
+## Error Handling (non-negotiable)
+```go
+// CORRECT
+result, err := doSomething(ctx)
+if err != nil {
+    return fmt.Errorf("doSomething: %w", err)
+}
+
+// WRONG — never do this
+result, _ := doSomething(ctx)
+
+// WRONG — too vague
+if err != nil {
+    return err
+}
+```
+- Always wrap errors with `fmt.Errorf("functionName: %w", err)`
+- Use `errors.Is()` and `errors.As()` for error type checking, never string matching
+
+## Context Usage
+```go
+// CORRECT — context first, always
+func Parse(ctx context.Context, dir string) (*BundleData, error) {
+    select {
+    case <-ctx.Done():
+        return nil, ctx.Err()
+    default:
+    }
+    // ... work ...
+}
+
+// WRONG — no context on I/O functions
+func Parse(dir string) (*BundleData, error) { ... }
+```
+- Check `ctx.Done()` at the start of long loops
+
+## Concurrency
+```go
+// CORRECT — RWMutex pattern for session store
+type Store struct {
+    mu       sync.RWMutex
+    sessions map[string]*Session
+}
+
+func (s *Store) Get(id string) (*Session, bool) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    sess, ok := s.sessions[id]
+    return sess, ok
+}
+
+func (s *Store) Set(id string, sess *Session) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.sessions[id] = sess
+}
+```
+- Always `defer mu.Unlock()` immediately after `mu.Lock()`
+- Never hold a lock while doing I/O
+
+## SSE Pattern (copy exactly)
+```go
+func (h *Handler) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
+    flusher, ok := w.(http.Flusher)
+    if !ok {
+        http.Error(w, "streaming not supported", http.StatusInternalServerError)
+        return
+    }
+    
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("Connection", "keep-alive")
+    w.Header().Set("X-Accel-Buffering", "no")
+    
+    ctx := r.Context()
+    
+    // Start work in goroutine, communicate via channel
+    ch := make(chan string, 10)
+    errCh := make(chan error, 1)
+    go func() {
+        err := doWork(ctx, ch)
+        errCh <- err
+        close(ch)
+    }()
+    
+    for {
+        select {
+        case <-ctx.Done():
+            return  // client disconnected — goroutine will exit via ctx
+        case chunk, ok := <-ch:
+            if !ok {
+                fmt.Fprintf(w, "event: done\ndata: {}\n\n")
+                flusher.Flush()
+                return
+            }
+            fmt.Fprintf(w, "event: chunk\ndata: %s\n\n", chunk)
+            flusher.Flush()
+        }
+    }
+}
+```
+
+## HTTP Handlers
+```go
+// Route params: use r.PathValue("id") (Go 1.22+ stdlib routing)
+sessionID := r.PathValue("sessionID")
+
+// Method routing in Go 1.22+
+mux.HandleFunc("POST /upload", h.HandleUpload)
+mux.HandleFunc("GET /stream/{sessionID}/triage", h.HandleTriageSSE)
+
+// Always set Content-Type before writing body
+w.Header().Set("Content-Type", "application/json")
+w.WriteHeader(http.StatusBadRequest)
+json.NewEncoder(w).Encode(map[string]string{"error": "file too large"})
+```
+
+## File I/O Safety
+```go
+// CORRECT — streaming tar extraction
+gr, err := gzip.NewReader(r)
+if err != nil {
+    return "", fmt.Errorf("gzip.NewReader: %w", err)
+}
+defer gr.Close()
+tr := tar.NewReader(gr)
+
+// CORRECT — path traversal prevention
+cleanPath := filepath.Clean(header.Name)
+if strings.Contains(cleanPath, "..") {
+    continue // skip malicious paths
+}
+
+// CORRECT — size limit per file
+const maxFileSize = 50 * 1024 * 1024 // 50MB
+lr := io.LimitReader(tr, maxFileSize+1)
+n, err := io.Copy(dst, lr)
+if n > maxFileSize {
+    return "", fmt.Errorf("file %s exceeds 50MB limit", header.Name)
+}
+```
+
+## JSON Handling
+```go
+// CORRECT — strict JSON decode with DisallowUnknownFields for our own types
+// But lenient for K8s API objects (they have many fields we don't care about)
+var pods corev1.PodList
+if err := json.Unmarshal(data, &pods); err != nil {
+    // Log but don't fatal — bundle files can have edge cases
+    data.ParseErrors = append(data.ParseErrors, fmt.Sprintf("pods.json: %v", err))
+    return
+}
+
+// CORRECT — always check for nil before accessing nested K8s fields
+if pod.Status.ContainerStatuses != nil {
+    for _, cs := range pod.Status.ContainerStatuses {
+        if cs.State.Waiting != nil {
+            reason = cs.State.Waiting.Reason
+        }
+    }
+}
+```
+
+## Constants and Configuration
+```go
+// CORRECT — named constants for all magic numbers
+const (
+    maxBundleSizeMB  = 250
+    maxFileSizeMB    = 50
+    maxTotalSizeMB   = 500
+    maxTokenBudget   = 80_000
+    maxLogLines      = 50
+    maxLogContainers = 10
+    sessionTTL       = 30 * time.Minute
+    cacheTTL         = 2 * time.Hour
+)
+
+// WRONG — magic numbers inline
+if size > 250*1024*1024 { ... }
+```
+
+## Template Rendering
+```go
+// CORRECT — parse templates once at startup, store on handler
+type Handler struct {
+    tmpl *template.Template
+    // ...
+}
+
+// In main.go / setup:
+tmpl := template.Must(template.ParseGlob("templates/**/*.html"))
+
+// In handler:
+if err := h.tmpl.ExecuteTemplate(w, "report.html", data); err != nil {
+    // Log the error — ExecuteTemplate may have already written partial response
+    slog.Error("template execution failed", "err", err)
+}
+```
+
+## Logging
+```go
+// Use slog (stdlib, Go 1.21+)
+import "log/slog"
+
+slog.Info("bundle extracted", "sessionID", id, "files", fileCount, "bytes", totalBytes)
+slog.Error("analysis failed", "sessionID", id, "phase", "triage", "err", err)
+slog.Warn("token budget enforced", "before", before, "after", after)
+
+// NEVER use fmt.Println for production logging
+// NEVER log sensitive data (API keys, user content)
+```
+
+## Testing
+```go
+// Table-driven tests always
+func TestExtract(t *testing.T) {
+    tests := []struct{
+        name    string
+        input   []byte
+        wantErr bool
+        wantFiles int
+    }{
+        {"valid tar.gz", makeTarGz(t, ...),  false, 3},
+        {"path traversal", makeEvilTar(t, ...), true, 0},
+        {"empty archive", makeEmpty(t), false, 0},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            dir, err := Extract(context.Background(), bytes.NewReader(tt.input), 100<<20)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("Extract() error = %v, wantErr %v", err, tt.wantErr)
+            }
+            // ...
+        })
+    }
+}
+```

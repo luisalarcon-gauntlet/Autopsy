@@ -1,0 +1,209 @@
+---
+description: Docker and containerization rules for Autopsy. Apply to Dockerfile, docker-compose.yml, and .dockerignore.
+globs: ["Dockerfile", "docker-compose.yml", ".dockerignore"]
+alwaysApply: true
+---
+
+# Docker Rules — Autopsy
+
+## The Goal
+`docker-compose up` is the ONLY command a reviewer needs to run the full application.
+No Go installation. No air. No make. Just Docker.
+
+## Critical Constraint: embed.FS
+Because the container has NO access to the filesystem outside the binary, ALL templates
+MUST be embedded using `//go:embed`. This is a hard requirement — the Dockerfile copies
+only the binary. If templates are read from disk at runtime, the container will crash.
+
+```go
+// In main.go or embed.go — this MUST exist before the Dockerfile works
+package main
+
+import "embed"
+
+//go:embed templates
+var templateFS embed.FS
+```
+
+Template parsing must use `templateFS`, not `os.ReadFile` or `template.ParseGlob`:
+```go
+// CORRECT
+tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html", "templates/partials/*.html"))
+
+// WRONG — file won't exist in container
+tmpl := template.Must(template.ParseGlob("templates/*.html"))
+```
+
+## Multi-Stage Build (required pattern)
+```dockerfile
+# Stage 1: Builder — has Go toolchain, creates a static binary
+FROM golang:1.22-alpine AS builder
+RUN apk add --no-cache git ca-certificates
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download         # cached layer — only re-runs when go.mod changes
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build \
+    -ldflags="-s -w -extldflags '-static'" \
+    -o autopsy .
+
+# Stage 2: Runtime — minimal, no Go toolchain
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates tzdata
+RUN addgroup -g 1001 autopsy && adduser -D -u 1001 -G autopsy autopsy
+WORKDIR /app
+COPY --from=builder /build/autopsy .
+RUN chown -R autopsy:autopsy /app
+USER autopsy
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:8080/healthz || exit 1
+ENTRYPOINT ["./autopsy"]
+```
+
+## Why These Build Flags
+- `CGO_ENABLED=0` — disables cgo so the binary is fully static (required for alpine scratch-like images)
+- `GOOS=linux GOARCH=amd64` — explicit target platform
+- `-ldflags="-s -w"` — strips debug info and symbol table → smaller binary
+- `-extldflags '-static'` — links all C libraries statically (belt and suspenders with CGO_ENABLED=0)
+
+## Image Size Budget
+- Final image must be under 30MB
+- Use `alpine:3.19` not `debian`, `ubuntu`, or `golang` as runtime base
+- Only install `ca-certificates` and `tzdata` in runtime stage:
+  - `ca-certificates` — required for TLS calls to Anthropic API
+  - `tzdata` — required for correct time zone handling in log timestamps
+- Do NOT install: `curl`, `bash`, `git`, `make`, or any dev tools in runtime stage
+
+## Security Rules
+- Container MUST run as non-root (uid 1001)
+- Never use `USER root` in runtime stage
+- Never `COPY .env` into the image
+- `ANTHROPIC_API_KEY` is always injected at runtime via environment variable
+- Never store the API key in image layers, build args, or labels
+
+## .dockerignore (must exclude all of these)
+```
+.git
+.gitignore
+.air.toml
+tmp/
+*.tar.gz
+*.tgz
+.env
+scripts/
+```
+
+Why each matters:
+- `.git` — would add ~MB of git history to build context
+- `*.tar.gz` — demo bundles can be 10-50MB, never needed in image
+- `.env` — would expose the API key in the build context
+- `tmp/` — air build artifacts, irrelevant
+- `scripts/` — cluster setup scripts, not needed in container
+
+## docker-compose.yml Pattern
+```yaml
+services:
+  autopsy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: autopsy:latest
+    container_name: autopsy
+    ports:
+      - "8080:8080"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PORT=8080
+      - MAX_BUNDLE_MB=250
+      - STUB_MODE=${STUB_MODE:-false}
+      - SESSION_TTL_MINUTES=30
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+```
+
+Key decisions:
+- `${ANTHROPIC_API_KEY:-}` — reads from host shell env, defaults to empty (stub mode)
+- `restart: unless-stopped` — auto-restarts on crash, stops on `docker-compose down`
+- `start_period: 10s` — gives the Go binary time to start before health checks begin
+- No `volumes` — the binary is self-contained via embed.FS
+
+## Makefile Docker Targets
+```makefile
+## docker-build: Build the Docker image
+docker-build:
+	docker build -t autopsy:latest .
+	@echo "Image size:"
+	@docker image inspect autopsy:latest --format='{{.Size}}' | \
+	  awk '{printf "%.1f MB\n", $$1/1024/1024}'
+
+## docker-run: Run Autopsy via docker-compose (builds if needed)
+docker-run:
+	docker-compose up --build
+
+## docker-stop: Stop the running container
+docker-stop:
+	docker-compose down
+
+## docker-logs: Tail container logs
+docker-logs:
+	docker-compose logs -f autopsy
+
+## docker-shell: Open a shell in the running container (debug only)
+docker-shell:
+	docker exec -it autopsy sh
+```
+
+## Healthz Endpoint (required before Dockerfile)
+The `/healthz` endpoint must exist before the Dockerfile is written.
+The HEALTHCHECK instruction in the Dockerfile depends on it.
+
+```go
+// handlers.go
+func (h *Handler) HandleHealthz(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte(`{"status":"ok","service":"autopsy"}`))
+}
+
+// main.go router
+mux.HandleFunc("GET /healthz", h.HandleHealthz)
+```
+
+## Verification Commands (run these to validate S7.2 and S7.3)
+```bash
+# Build the image
+docker build -t autopsy:latest .
+
+# Check image size (must be under 30MB)
+docker image inspect autopsy:latest --format='{{.Size}}' | awk '{printf "%.1f MB\n", $1/1024/1024}'
+
+# Run in stub mode (no API key needed)
+docker run --rm -p 8080:8080 autopsy:latest
+
+# Verify health check
+curl -s http://localhost:8080/healthz | jq .
+
+# Check it's running as non-root
+docker exec <container_id> whoami  # should print: autopsy
+
+# Full docker-compose test
+docker-compose up --build
+# In another terminal:
+curl http://localhost:8080/healthz
+# Then ctrl-C and:
+docker-compose down
+```
+
+## Common Failure Modes to Avoid
+1. **Templates not embedded** — `template.ParseGlob` works locally but panics in container. Always use `embed.FS`.
+2. **API key in image** — never use `ARG ANTHROPIC_API_KEY` or `ENV ANTHROPIC_API_KEY=...` in Dockerfile.
+3. **Binary not static** — if CGO is enabled, the binary links against glibc which doesn't exist in alpine. Always `CGO_ENABLED=0`.
+4. **Wrong COPY path** — `COPY --from=builder /build/autopsy .` copies to `/app/autopsy`. ENTRYPOINT must be `["./autopsy"]` not `["/autopsy"]`.
+5. **Missing ca-certificates** — without this, TLS handshake to `api.anthropic.com` fails with x509 error.

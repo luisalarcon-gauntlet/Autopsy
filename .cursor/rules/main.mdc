@@ -1,0 +1,142 @@
+---
+description: Autopsy - AI-powered Kubernetes support bundle analyzer. Core project rules.
+globs: ["**/*.go", "**/*.html", "**/*.md", "Makefile", "go.mod", "Dockerfile", "docker-compose.yml"]
+alwaysApply: true
+---
+
+# Autopsy — Project Rules (CTO Spec)
+
+## What This Project Is
+Autopsy is an AI-powered web application that analyzes Replicated Troubleshoot support bundles (.tar.gz archives of Kubernetes cluster diagnostics). It accepts a bundle upload, extracts and parses the contents, runs a multi-phase Claude-powered analysis, and presents findings via a streaming web dashboard with chat interface.
+
+## Project Name
+The project is named **Autopsy**. All references to "BundleIQ" in code, comments, templates, and documentation must use "Autopsy" instead.
+- Go module: `github.com/yourusername/autopsy`
+- Binary name: `autopsy`
+- Docker image: `autopsy:latest`
+
+## Stack (non-negotiable)
+- **Language:** Go 1.22+
+- **HTTP:** stdlib `net/http` only — no Gin, Echo, or Chi
+- **Frontend:** Go `html/template` + HTMX (CDN) + Tailwind CSS (CDN) — zero JS build step
+- **AI:** `github.com/anthropics/anthropic-sdk-go` — official SDK only
+- **Streaming:** Server-Sent Events (SSE) via `net/http` + HTMX SSE extension
+- **No database:** in-memory session store with mutex, TTL cleanup goroutine
+- **Live reload dev:** `air` (github.com/air-verse/air)
+- **Container:** Docker (multi-stage build) + docker-compose for one-command run
+
+## Repository Layout
+```
+autopsy/
+├── main.go                    # Entry point, router setup
+├── go.mod
+├── go.sum
+├── Dockerfile                 # Multi-stage: builder + minimal runtime image
+├── docker-compose.yml         # One-command run: docker-compose up
+├── .dockerignore
+├── .air.toml                  # Live reload config
+├── Makefile                   # dev, build, test, lint, docker targets
+├── .env.example               # ANTHROPIC_API_KEY=, PORT=8080, MAX_BUNDLE_MB=250
+├── internal/
+│   ├── bundle/
+│   │   ├── extract.go         # Streaming tar.gz extraction with size limits
+│   │   ├── parser.go          # Parse cluster JSON, events, pod logs
+│   │   └── types.go           # BundleData, PodSummary, ClusterEvent, LogExcerpt
+│   ├── analysis/
+│   │   ├── analyzer.go        # Orchestrates 3-phase AI analysis
+│   │   ├── phases.go          # TriageResult, TimelineResult, RCAResult types
+│   │   ├── prompts.go         # All prompt templates as package-level constants
+│   │   └── cache.go           # SHA256 content-hash cache (in-memory)
+│   ├── session/
+│   │   └── store.go           # Thread-safe session map, TTL cleanup
+│   └── server/
+│       ├── handlers.go        # HTTP handlers: upload, analyze, stream, chat
+│       ├── sse.go             # SSE writer with context cancellation
+│       └── middleware.go      # Request logging, panic recovery
+├── templates/
+│   ├── layout.html            # Base layout: HTMX + Tailwind CDN includes
+│   ├── upload.html            # Drop-zone upload page
+│   ├── report.html            # Analysis dashboard (4 panels)
+│   ├── partials/
+│   │   ├── risk_card.html     # Risk scorecard partial
+│   │   ├── timeline.html      # Timeline partial
+│   │   ├── rca.html           # RCA streaming partial
+│   │   └── chat.html          # Chat interface partial
+└── MY_APPROACH_AND_THOUGHTS.md
+```
+
+## Commit Strategy
+**After every story completes, Cursor MUST:**
+1. `git add -A`
+2. `git commit -m "feat(SX.Y): <story description>"`
+   - Use conventional commits format
+   - Epic prefix: `feat`, `fix`, `chore`, `docs`
+   - Story ID matches the STORIES.md numbering
+3. Never batch multiple stories into one commit
+4. If a story adds tests, tests must pass before commit
+
+## Docker Requirements (non-negotiable)
+- The app MUST be fully runnable via `docker-compose up` — no Go installation required by the reviewer
+- Dockerfile uses a **multi-stage build**: `golang:1.22-alpine` builder → `alpine:3.19` runtime
+- Final image must be under 30MB
+- `ANTHROPIC_API_KEY` is passed as an environment variable at runtime — NEVER baked into the image
+- Templates MUST be embedded in the binary using `//go:embed templates` + `embed.FS` so the container has zero external file dependencies
+- The container runs as a non-root user (uid 1001)
+- Health check endpoint: `GET /healthz` returns HTTP 200 with `{"status":"ok"}`
+- `docker-compose.yml` reads `ANTHROPIC_API_KEY` from the host environment and passes it through
+- The final story (S7.2) must end with `docker-compose up` successfully serving the app on port 8080
+
+## Go Code Standards
+- All exported types and functions MUST have godoc comments
+- Error handling: NEVER ignore errors. Every `err != nil` must be handled.
+- No `panic()` in production paths — only in `main()` for startup failures
+- Use `context.Context` as first argument on any function that does I/O
+- Prefer table-driven tests in `_test.go` files alongside source
+- All magic numbers must be named constants in the relevant package
+- No global mutable state except the session store (which uses sync.RWMutex)
+- File size: no Go source file should exceed 300 lines — split if needed
+
+## Critical Safety Rules (never violate)
+1. **Bundle size limit:** Reject uploads > `MAX_BUNDLE_MB` (default 250MB) at the HTTP layer before extraction. Return HTTP 413.
+2. **Streaming extraction:** Extract tar.gz as a stream — NEVER load the full archive into memory. Use `tar.NewReader(gzip.NewReader(r.Body))`.
+3. **Token budget:** The `BundleData` struct passed to Claude must NEVER exceed 80,000 tokens. The parser enforces this by truncating log excerpts.
+4. **SSE context propagation:** Every SSE goroutine must `select` on `r.Context().Done()` and return immediately when the client disconnects. No goroutine leaks.
+5. **Temp directory cleanup:** Every extracted bundle gets a `defer os.RemoveAll(tmpDir)` AND is registered in the session TTL store for cleanup after 30 minutes.
+6. **API key validation at startup:** If `ANTHROPIC_API_KEY` is not set, log a warning and enable stub mode — do NOT panic or refuse to start.
+
+## HTML/Template Standards
+- Templates are in `templates/` directory, parsed once at startup
+- Use `template.Must(template.ParseGlob(...))` with panic on parse failure (startup only)
+- All user-provided data must go through `template.HTMLEscapeString()` before rendering
+- HTMX attributes use `hx-` prefix as documented at htmx.org
+- Tailwind classes only — no custom CSS files. Use CDN: `https://cdn.tailwindcss.com`
+- HTMX CDN: `https://unpkg.com/htmx.org@2.0.0`
+- HTMX SSE ext CDN: `https://unpkg.com/htmx-ext-sse@2.2.1/sse.js`
+
+## AI / Claude Usage Rules
+- Model: always `claude-sonnet-4-6` (claude-sonnet-4-6-20250929 for SDK)
+- Max tokens per phase: Phase 1 (triage) = 1024, Phase 2 (timeline) = 2048, Phase 3 (RCA) = 4096, Chat = 2048
+- All prompts are defined as constants in `internal/analysis/prompts.go` — never inline prompts in handlers
+- Structured outputs (triage, timeline) use JSON mode with explicit schema in the prompt
+- RCA and chat use streaming via `client.Messages.NewStreaming()`
+- Always pass `context.Context` to SDK calls so they can be cancelled on client disconnect
+
+## Stub Mode
+When `ANTHROPIC_API_KEY` is empty OR `STUB_MODE=true`:
+- Analysis phases return pre-canned responses from `internal/analysis/stubs.go`
+- SSE streaming still works (simulated with `time.Sleep` chunks)
+- UI shows a yellow "⚠ Stub mode" banner
+- This allows the reviewer to run the app without an API key
+
+## Error UX
+- HTTP errors render the `templates/error.html` partial, not a blank page
+- API errors from Claude show: "Analysis unavailable — [reason]" in the relevant panel
+- Upload errors show inline validation messages via HTMX swap
+- Server panics are recovered by middleware and return HTTP 500 with a useful message
+
+## Testing Requirements
+- `bundle/extract_test.go`: test with a crafted minimal tar.gz, assert file tree
+- `bundle/parser_test.go`: test parsing of sample JSON fixtures in `testdata/`
+- `analysis/prompts_test.go`: test that rendered prompts stay under token budget
+- `session/store_test.go`: test TTL expiry and concurrent access (race detector)
+- Run tests with: `go test -race ./...`

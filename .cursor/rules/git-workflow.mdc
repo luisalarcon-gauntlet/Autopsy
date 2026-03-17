@@ -1,0 +1,128 @@
+---
+description: Git workflow rules for Autopsy. Cursor must follow these for every story completion.
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Git Workflow Rules — Autopsy
+
+## The Golden Rule
+**One story = one commit. Always. No exceptions.**
+
+## Autonomous Execution Mode
+Cursor works through ALL stories in STORIES.md automatically without stopping.
+- Complete a story → commit → immediately start the next story
+- Do NOT ask "should I continue?", "ready for the next one?", or "shall I proceed?"
+- Do NOT wait for human approval between stories
+- Do NOT summarize what you just did and pause — just keep going
+- The only valid reason to stop is a failure you cannot resolve after 3 attempts
+- If blocked after 3 attempts: write `BLOCKED.md` explaining what failed, commit it as `chore(SX.Y): note blocker`, then move on to the next story
+- Run through every story from S0.1 to S7.4 in one uninterrupted session
+
+## Story Execution — Exact Sequence Per Story
+
+```bash
+# 1. Read the story from STORIES.md completely before writing any code
+
+# 2. Implement everything the story requires
+
+# 3. Run checks — ALL must pass before committing
+go test -race ./...
+go vet ./...
+go build ./...
+
+# 4. Stage and commit
+git add -A
+git commit -m "feat(SX.Y): short description matching the story"
+
+# 5. Verify the commit landed
+git log --oneline -1
+
+# 6. Immediately begin the next story — no pause
+```
+
+## Commit Message Format
+```
+<type>(<story-id>): <short description>
+
+Types:
+  feat     — new feature or functionality
+  fix      — bug fix
+  chore    — tooling, dependencies, config
+  docs     — documentation only
+  test     — test files only
+  refactor — code change that neither fixes a bug nor adds a feature
+```
+
+Examples:
+```
+chore(S0.1): initialize go module and air live-reload
+chore(S0.2): env config, API key guard, stub mode flag
+feat(S1.2): streaming tar.gz extraction to temp dir
+feat(S3.3): phase 3 streaming RCA with kubectl remediation steps
+fix(S2.3): handle missing log directory gracefully
+feat(S7.2): multi-stage Dockerfile with non-root user
+docs(S7.4): final README polish and v1.0.0 tag
+```
+
+## What Must Be True Before Every Commit
+- [ ] `go test -race ./...` exits 0
+- [ ] `go vet ./...` exits 0
+- [ ] `go build ./...` exits 0
+- [ ] No hardcoded API keys or secrets in any file
+- [ ] Story acceptance criteria are all met
+
+## What Should NEVER Be Committed
+- `.env` files (only `.env.example`)
+- `*.tar.gz` bundle files
+- `vendor/` directory (use go modules)
+- OS files: `.DS_Store`, `Thumbs.db`
+- IDE files: `.idea/`
+- Binary build outputs
+
+## .gitignore (create this at S0.1)
+```gitignore
+# Built binary
+autopsy
+autopsy.exe
+
+# Environment
+.env
+
+# Bundle files (can be large)
+*.tar.gz
+*.tgz
+
+# Temp directories
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+```
+
+## Branch Strategy
+- Work directly on `main`
+- No feature branches
+
+## Final Tag (last action in S7.4)
+```bash
+git tag -a v1.0.0 -m "Autopsy v1.0 — AI-powered Kubernetes support bundle analyzer"
+```
+
+## What the Commit History Should Look Like
+```
+a1b2c3d docs(S7.4): final README polish and v1.0.0 tag
+b2c3d4e feat(S7.3): docker-compose for one-command startup
+c3d4e5f feat(S7.2): multi-stage Dockerfile with non-root user
+d4e5f6g feat(S7.1): embed templates with go:embed and add healthz endpoint
+...
+x1y2z3a chore(S0.1): initialize go module and air live-reload
+```
+
+Every line is one story. No "fix stuff", no "WIP", no "update".

@@ -1,0 +1,49 @@
+# air - live reload config for Autopsy
+# https://github.com/air-verse/air
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # The command to build the project
+  cmd = "go build -o ./tmp/autopsy ."
+  
+  # Binary to run after build
+  bin = "./tmp/autopsy"
+  
+  # Extra args to pass to the binary
+  args_bin = []
+  
+  # Watch these file extensions
+  include_ext = ["go", "html", "css"]
+  
+  # Exclude these directories
+  exclude_dir = ["tmp", "vendor", "testdata", "scripts"]
+  
+  # Exclude files matching these patterns
+  exclude_regex = ["_test.go"]
+  
+  # Kill the binary and rebuild on change
+  stop_on_error = false
+  send_interrupt = true
+  kill_delay = "0.5s"
+  
+  # Show build log
+  log = "build-errors.log"
+  
+  # Delay before rebuilding after file change (ms)
+  delay = 300
+
+[log]
+  time = false
+  main_only = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  # Delete tmp dir on exit
+  clean_on_exit = true
