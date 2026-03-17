@@ -1,0 +1,12 @@
+.git
+.gitignore
+.air.toml
+tmp/
+*.tar.gz
+*.tgz
+.env
+.env.*
+!.env.example
+scripts/
+README.md
+MY_APPROACH_AND_THOUGHTS.md
