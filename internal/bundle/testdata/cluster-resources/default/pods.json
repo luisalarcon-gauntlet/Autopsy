@@ -1,0 +1,92 @@
+{
+  "apiVersion": "v1",
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {"name": "nginx-7d8b9c4f5-xkcd2", "namespace": "default"},
+      "spec":     {"nodeName": "node-1"},
+      "status": {
+        "phase": "Running",
+        "containerStatuses": [
+          {
+            "name": "nginx",
+            "ready": true,
+            "restartCount": 0,
+            "state": {"running": {"startedAt": "2024-01-15T09:00:00Z"}},
+            "lastState": {}
+          }
+        ]
+      }
+    },
+    {
+      "metadata": {"name": "payment-processor-6d4b8f9c5-abc12", "namespace": "default"},
+      "spec":     {"nodeName": "node-1"},
+      "status": {
+        "phase": "Running",
+        "containerStatuses": [
+          {
+            "name": "payment-processor",
+            "ready": false,
+            "restartCount": 15,
+            "state": {
+              "waiting": {
+                "reason":  "CrashLoopBackOff",
+                "message": "back-off 5m0s restarting failed container=payment-processor pod=payment-processor-6d4b8f9c5-abc12_default"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "reason":   "Error",
+                "message":  "container exited with non-zero exit code 1",
+                "exitCode": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "metadata": {"name": "data-ingestion-worker-5c7d9f8b6-def34", "namespace": "default"},
+      "spec":     {"nodeName": "node-2"},
+      "status": {
+        "phase": "Failed",
+        "containerStatuses": [
+          {
+            "name": "worker",
+            "ready": false,
+            "restartCount": 3,
+            "state": {
+              "terminated": {
+                "reason":   "OOMKilled",
+                "message":  "",
+                "exitCode": 137
+              }
+            },
+            "lastState": {}
+          }
+        ]
+      }
+    },
+    {
+      "metadata": {"name": "redis-cache-canary-abc123", "namespace": "default"},
+      "spec":     {"nodeName": "node-1"},
+      "status": {
+        "phase": "Pending",
+        "containerStatuses": [
+          {
+            "name": "redis",
+            "ready": false,
+            "restartCount": 0,
+            "state": {
+              "waiting": {
+                "reason":  "ImagePullBackOff",
+                "message": "Back-off pulling image \"redis:nonexistent-tag\""
+              }
+            },
+            "lastState": {}
+          }
+        ]
+      }
+    }
+  ]
+}
