@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -472,6 +473,164 @@ func TestIsErrorLine(t *testing.T) {
 		if got := isErrorLine(tt.line); got != tt.want {
 			t.Errorf("isErrorLine(%q) = %v, want %v", tt.line, got, tt.want)
 		}
+	}
+}
+
+// --- S2.4: Token budget ---
+
+func TestEstimateTokens_NonZero(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if data.TokenEstimate <= 0 {
+		t.Errorf("TokenEstimate = %d, want > 0", data.TokenEstimate)
+	}
+}
+
+func TestEnforceBudget_NothingTrimmedWhenUnderBudget(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	podsBefore := len(data.PodSummaries)
+	eventsBefore := len(data.Events)
+
+	result := EnforceBudget(data, MaxTokenBudget)
+
+	if len(result.PodSummaries) != podsBefore {
+		t.Errorf("PodSummaries trimmed when under budget: got %d, want %d",
+			len(result.PodSummaries), podsBefore)
+	}
+	if len(result.Events) != eventsBefore {
+		t.Errorf("Events trimmed when under budget: got %d, want %d",
+			len(result.Events), eventsBefore)
+	}
+	if result.TokenEstimate <= 0 {
+		t.Errorf("TokenEstimate not set after EnforceBudget: %d", result.TokenEstimate)
+	}
+}
+
+func TestEnforceBudget_Pass1_LogTruncation(t *testing.T) {
+	data := makeLargeBundleData()
+
+	// Set a very tight budget to force trimming.
+	result := EnforceBudget(data, 1)
+
+	for _, ex := range result.LogExcerpts {
+		if len(ex.Lines) > budgetLogLineCap {
+			t.Errorf("container %s/%s has %d lines after pass 1, want <= %d",
+				ex.PodName, ex.Container, len(ex.Lines), budgetLogLineCap)
+		}
+	}
+}
+
+func TestEnforceBudget_Pass2_HealthyPodsDropped(t *testing.T) {
+	data := makeLargeBundleData()
+	// Budget that survives pass 1 but fails pass 2.
+	// Strip logs first so pass 1 has nothing to do.
+	data.LogExcerpts = nil
+
+	result := EnforceBudget(data, 1)
+
+	for _, p := range result.PodSummaries {
+		if p.Reason == "" {
+			t.Errorf("healthy pod %q still present after budget enforcement", p.Name)
+		}
+	}
+}
+
+func TestEnforceBudget_Pass3_NormalEventsDropped(t *testing.T) {
+	data := makeLargeBundleData()
+	data.LogExcerpts = nil
+	data.PodSummaries = nil // skip pass 2
+
+	result := EnforceBudget(data, 1)
+
+	for _, e := range result.Events {
+		if e.Type == "Normal" {
+			t.Errorf("Normal event %q still present after budget enforcement", e.Reason)
+		}
+	}
+}
+
+func TestEnforceBudget_TokenEstimateIsSet(t *testing.T) {
+	data := makeLargeBundleData()
+	result := EnforceBudget(data, MaxTokenBudget)
+
+	if result.TokenEstimate <= 0 {
+		t.Errorf("TokenEstimate = %d, want > 0", result.TokenEstimate)
+	}
+	// TokenEstimate may differ from a fresh EstimateTokens call by a tiny amount
+	// because the TokenEstimate field itself contributes to the JSON byte count.
+	fresh := EstimateTokens(result)
+	diff := result.TokenEstimate - fresh
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > 5 {
+		t.Errorf("TokenEstimate = %d differs from EstimateTokens = %d by %d (max 5)",
+			result.TokenEstimate, fresh, diff)
+	}
+}
+
+// makeLargeBundleData creates a BundleData with enough content to stress the budget enforcer.
+func makeLargeBundleData() *BundleData {
+	pods := make([]PodSummary, 50)
+	for i := 0; i < 50; i++ {
+		if i%2 == 0 {
+			pods[i] = PodSummary{
+				Name:         fmt.Sprintf("crashing-pod-%d", i),
+				Namespace:    "default",
+				Phase:        "Running",
+				RestartCount: 10,
+				Reason:       "CrashLoopBackOff",
+			}
+		} else {
+			pods[i] = PodSummary{
+				Name:      fmt.Sprintf("healthy-pod-%d", i),
+				Namespace: "default",
+				Phase:     "Running",
+				Ready:     "1/1",
+			}
+		}
+	}
+
+	events := make([]ClusterEvent, 100)
+	for i := 0; i < 100; i++ {
+		evType := "Warning"
+		if i%3 == 0 {
+			evType = "Normal"
+		}
+		events[i] = ClusterEvent{
+			Namespace: "default",
+			Name:      fmt.Sprintf("pod-%d", i),
+			Reason:    "BackOff",
+			Message:   strings.Repeat("x", 300),
+			Type:      evType,
+			Count:     i + 1,
+		}
+	}
+
+	excerpts := make([]LogExcerpt, 10)
+	for i := 0; i < 10; i++ {
+		lines := make([]string, 80)
+		for j := 0; j < 80; j++ {
+			lines[j] = fmt.Sprintf("2024-01-15T10:00:00Z ERROR log line %d from container %d", j, i)
+		}
+		excerpts[i] = LogExcerpt{
+			Namespace: "default",
+			PodName:   fmt.Sprintf("crashing-pod-%d", i*2),
+			Container: "app",
+			Lines:     lines,
+		}
+	}
+
+	return &BundleData{
+		ClusterVersion: "v1.28.4",
+		PodSummaries:   pods,
+		Events:         events,
+		LogExcerpts:    excerpts,
 	}
 }
 

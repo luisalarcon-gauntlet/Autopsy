@@ -40,12 +40,15 @@ func Parse(ctx context.Context, bundleDir string) (*BundleData, error) {
 
 	parseHelm(bundleDir, data)
 
+	data.TokenEstimate = EstimateTokens(data)
+
 	slog.Info("bundle parsed",
 		"pods", len(data.PodSummaries),
 		"nodes", len(data.NodeSummaries),
 		"events", len(data.Events),
 		"logExcerpts", len(data.LogExcerpts),
 		"parseErrors", len(data.ParseErrors),
+		"tokenEstimate", data.TokenEstimate,
 	)
 
 	return data, nil
