@@ -18,9 +18,9 @@ func main() {
 	cfg := config.Load()
 	config.LogStartup(cfg)
 
-	// Parse all templates at startup — panic on failure (startup only).
-	tmpl := template.Must(template.ParseGlob("templates/*.html"))
-	tmpl = template.Must(tmpl.ParseGlob("templates/partials/*.html"))
+	// Parse all templates from the embedded FS at startup — panic on failure (startup only).
+	// embed.FS ensures the binary is self-contained; no template files needed on disk at runtime.
+	tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html", "templates/partials/*.html"))
 
 	store := session.NewStore(cfg.SessionTTL)
 	cache := analysis.NewCache()
