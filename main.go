@@ -9,6 +9,7 @@ import (
 
 	"github.com/yourusername/autopsy/internal/config"
 	"github.com/yourusername/autopsy/internal/server"
+	"github.com/yourusername/autopsy/internal/session"
 )
 
 func main() {
@@ -17,11 +18,14 @@ func main() {
 
 	tmpl := template.Must(template.ParseGlob("templates/*.html"))
 
-	h := server.NewHandler(cfg, tmpl)
+	store := session.NewStore(cfg.SessionTTL)
+
+	h := server.NewHandler(cfg, tmpl, store)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", h.HandleIndex)
 	mux.HandleFunc("POST /upload", h.HandleUpload)
+	mux.HandleFunc("GET /report/{sessionID}", h.HandleReport)
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
 
 	addr := ":" + cfg.Port

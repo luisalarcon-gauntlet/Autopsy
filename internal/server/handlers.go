@@ -3,12 +3,15 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/yourusername/autopsy/internal/bundle"
 	"github.com/yourusername/autopsy/internal/config"
+	"github.com/yourusername/autopsy/internal/session"
 )
 
 const (
@@ -17,13 +20,14 @@ const (
 
 // Handler holds shared dependencies for all HTTP handlers.
 type Handler struct {
-	cfg  config.Config
-	tmpl *template.Template
+	cfg   config.Config
+	tmpl  *template.Template
+	store *session.Store
 }
 
-// NewHandler creates a Handler with the given config and parsed templates.
-func NewHandler(cfg config.Config, tmpl *template.Template) *Handler {
-	return &Handler{cfg: cfg, tmpl: tmpl}
+// NewHandler creates a Handler with the given config, parsed templates, and session store.
+func NewHandler(cfg config.Config, tmpl *template.Template, store *session.Store) *Handler {
+	return &Handler{cfg: cfg, tmpl: tmpl, store: store}
 }
 
 // HandleIndex serves the upload page.
@@ -41,15 +45,16 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleUpload accepts a multipart upload of a .tar.gz bundle.
-// It enforces the MAX_BUNDLE_MB size limit and validates the file extension.
+// HandleUpload accepts a multipart upload of a .tar.gz bundle, extracts it
+// to a temp directory, creates a session, and redirects via HTMX to the report page.
 func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	maxBytes := h.cfg.MaxBundleMB * 1024 * 1024
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
 	if err := r.ParseMultipartForm(maxMemoryBytes); err != nil {
-		if strings.Contains(err.Error(), "request body too large") || strings.Contains(err.Error(), "http: request body too large") {
-			jsonError(w, "Bundle exceeds maximum allowed size", http.StatusRequestEntityTooLarge)
+		if strings.Contains(err.Error(), "request body too large") ||
+			strings.Contains(err.Error(), "http: request body too large") {
+			jsonError(w, fmt.Sprintf("Bundle exceeds maximum allowed size (%dMB)", h.cfg.MaxBundleMB), http.StatusRequestEntityTooLarge)
 			return
 		}
 		jsonError(w, "Failed to parse upload: "+err.Error(), http.StatusBadRequest)
@@ -71,10 +76,36 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("bundle upload received", "filename", name, "size_bytes", header.Size)
 
-	// Placeholder response until S1.4 wires in extraction + session.
-	w.Header().Set("Content-Type", "application/json")
+	tmpDir, err := bundle.Extract(r.Context(), file, bundle.MaxTotalSizeBytes)
+	if err != nil {
+		slog.Error("bundle extraction failed", "filename", name, "err", err)
+		jsonError(w, "Failed to extract bundle: "+err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+
+	sess := h.store.New(tmpDir)
+	slog.Info("session created", "sessionID", sess.ID, "bundleDir", tmpDir)
+
+	w.Header().Set("HX-Redirect", "/report/"+sess.ID)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "received", "filename": name})
+}
+
+// HandleReport serves the analysis report page for a given session.
+func (h *Handler) HandleReport(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("sessionID")
+	sess, ok := h.store.Get(sessionID)
+	if !ok {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	data := map[string]any{
+		"StubMode":  h.cfg.StubMode,
+		"SessionID": sess.ID,
+	}
+	if err := h.tmpl.ExecuteTemplate(w, "report.html", data); err != nil {
+		slog.Error("template execution failed", "template", "report.html", "err", err)
+	}
 }
 
 // HandleHealthz returns a simple health check response.
