@@ -132,12 +132,29 @@ autopsy/
 
 ---
 
+## How It Works
+
+Autopsy runs a four-phase pipeline:
+
+| Phase | What it does | Output |
+|-------|-------------|--------|
+| **Extraction** | Streams `.tar.gz` without buffering the full archive in memory | Temp dir |
+| **Parsing** | Walks cluster-resources/, logs/, events — enforces 80k-token budget | `BundleData` struct |
+| **Analysis** | 3 Claude calls: structured triage JSON → timeline JSON → streaming RCA markdown | Panels stream in |
+| **Chat** | Per-message context injection from keyword search over bundle data | Grounded answers |
+
+Results are cached by SHA256 of the bundle bytes — uploading the same file twice is instant.
+
+---
+
 ## Generating a Demo Bundle
 
 ```bash
-make demo-cluster    # creates a kind cluster with scripted failures
+make demo-cluster    # creates a kind cluster with 5 scripted failures
 make demo-bundle     # generates demo-bundle-TIMESTAMP.tar.gz
 ```
 
-The demo cluster includes: OOMKilled pod, CrashLoopBackOff, ImagePullBackOff,
-pending pod (insufficient resources), and a missing ConfigMap reference.
+The demo cluster includes: OOMKilled workload, CrashLoopBackOff, ImagePullBackOff,
+Pending pod (32Gi request), and a missing ConfigMap reference.
+
+See `scripts/demo-script.md` for a 2-minute walkthrough script.
