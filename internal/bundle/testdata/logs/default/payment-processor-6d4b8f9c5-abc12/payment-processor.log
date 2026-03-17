@@ -1,0 +1,19 @@
+2024-01-15T10:00:00Z INFO  Starting payment-processor service v2.3.1
+2024-01-15T10:00:01Z INFO  Connecting to database at postgres:5432
+2024-01-15T10:00:01Z INFO  Database connection established
+2024-01-15T10:00:02Z INFO  Loading configuration from /etc/config/app.yaml
+2024-01-15T10:00:02Z INFO  Connecting to payment gateway at https://api.stripe.com
+2024-01-15T10:00:05Z ERROR Failed to connect to payment gateway: dial tcp 93.184.216.34:443: i/o timeout
+2024-01-15T10:00:05Z INFO  Retry 1/3 in 5s
+2024-01-15T10:00:10Z ERROR Failed to connect to payment gateway: dial tcp 93.184.216.34:443: i/o timeout
+2024-01-15T10:00:10Z INFO  Retry 2/3 in 10s
+2024-01-15T10:00:20Z ERROR Failed to connect to payment gateway: dial tcp 93.184.216.34:443: i/o timeout
+2024-01-15T10:00:20Z FATAL All retries exhausted. Cannot reach payment gateway.
+2024-01-15T10:00:20Z INFO  Initiating graceful shutdown
+panic: runtime error: invalid memory address or nil pointer dereference
+goroutine 1 [running]:
+main.(*PaymentService).processQueue(0xc0001a4000)
+	/app/service.go:142 +0x1e8
+main.main()
+	/app/main.go:57 +0x234
+exit status 2

@@ -32,12 +32,19 @@ func Parse(ctx context.Context, bundleDir string) (*BundleData, error) {
 	}
 	data.Events = events
 
+	excerpts, err := extractLogs(ctx, bundleDir, data.PodSummaries, &data.ParseErrors)
+	if err != nil {
+		data.ParseErrors = append(data.ParseErrors, fmt.Sprintf("logs: %v", err))
+	}
+	data.LogExcerpts = excerpts
+
 	parseHelm(bundleDir, data)
 
 	slog.Info("bundle parsed",
 		"pods", len(data.PodSummaries),
 		"nodes", len(data.NodeSummaries),
 		"events", len(data.Events),
+		"logExcerpts", len(data.LogExcerpts),
 		"parseErrors", len(data.ParseErrors),
 	)
 

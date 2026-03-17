@@ -2,6 +2,8 @@ package bundle
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -321,6 +323,155 @@ func TestParseEventTimestamp_Empty(t *testing.T) {
 	ts := parseEventTimestamp(e)
 	if !ts.IsZero() {
 		t.Errorf("timestamp = %v, want zero for empty event", ts)
+	}
+}
+
+// --- S2.1 (continued): init container failure ---
+
+// --- S2.3: Log extraction ---
+
+func TestParse_LogExcerpts_OnlyUnhealthy(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	// Only the payment-processor pod has a log file in testdata.
+	if len(data.LogExcerpts) == 0 {
+		t.Fatal("expected at least one log excerpt for crashing pod, got 0")
+	}
+
+	for _, ex := range data.LogExcerpts {
+		// All excerpts must be for pods with failures.
+		found := false
+		for _, pod := range data.PodSummaries {
+			if pod.Name == ex.PodName {
+				if pod.RestartCount == 0 && pod.Phase != "Failed" {
+					t.Errorf("log excerpt for healthy pod %q should not be included", ex.PodName)
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("log excerpt for unknown pod %q", ex.PodName)
+		}
+	}
+}
+
+func TestParse_LogExcerpts_ErrorLinesPresent(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	var ppExcerpt *LogExcerpt
+	for i := range data.LogExcerpts {
+		if data.LogExcerpts[i].PodName == "payment-processor-6d4b8f9c5-abc12" {
+			ppExcerpt = &data.LogExcerpts[i]
+		}
+	}
+	if ppExcerpt == nil {
+		t.Fatal("no log excerpt found for payment-processor pod")
+	}
+
+	if ppExcerpt.ErrorCount == 0 {
+		t.Error("ErrorCount = 0, want > 0 for log with ERROR/FATAL/panic lines")
+	}
+
+	hasError := false
+	for _, line := range ppExcerpt.Lines {
+		if isErrorLine(line) {
+			hasError = true
+			break
+		}
+	}
+	if !hasError {
+		t.Error("no error lines found in excerpt, expected ERROR/FATAL/panic lines")
+	}
+}
+
+func TestParse_LogExcerpts_LineCap(t *testing.T) {
+	data, err := Parse(context.Background(), testdataDir)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	totalLines := 0
+	for _, ex := range data.LogExcerpts {
+		if len(ex.Lines) > maxLogLinesPerContainer {
+			t.Errorf("excerpt for %s/%s has %d lines, max is %d",
+				ex.PodName, ex.Container, len(ex.Lines), maxLogLinesPerContainer)
+		}
+		totalLines += len(ex.Lines)
+	}
+	// Total across all excerpts must not exceed 500 (10 containers × 50 lines).
+	if totalLines > 500 {
+		t.Errorf("total log lines = %d, must be <= 500", totalLines)
+	}
+}
+
+func TestReadLogExcerpt_TruncationFlag(t *testing.T) {
+	// Write a temp file with more than maxLastLines lines.
+	tmp := t.TempDir()
+	logPath := tmp + "/app.log"
+	f, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create temp log: %v", err)
+	}
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(f, "2024-01-15T10:00:00Z INFO line number %d\n", i)
+	}
+	f.Close()
+
+	excerpt, err := readLogExcerpt(logPath, "ns", "pod", "app")
+	if err != nil {
+		t.Fatalf("readLogExcerpt() error = %v", err)
+	}
+	if excerpt == nil {
+		t.Fatal("readLogExcerpt() returned nil for non-empty file")
+	}
+	if !excerpt.Truncated {
+		t.Error("Truncated = false, want true for 100-line file")
+	}
+	if len(excerpt.Lines) > maxLogLinesPerContainer {
+		t.Errorf("Lines count = %d, want <= %d", len(excerpt.Lines), maxLogLinesPerContainer)
+	}
+}
+
+func TestReadLogExcerpt_EmptyFile(t *testing.T) {
+	tmp := t.TempDir()
+	logPath := tmp + "/empty.log"
+	if err := os.WriteFile(logPath, []byte{}, 0o644); err != nil {
+		t.Fatalf("write empty file: %v", err)
+	}
+
+	excerpt, err := readLogExcerpt(logPath, "ns", "pod", "app")
+	if err != nil {
+		t.Fatalf("readLogExcerpt() error = %v", err)
+	}
+	if excerpt != nil {
+		t.Errorf("readLogExcerpt() on empty file = %v, want nil", excerpt)
+	}
+}
+
+func TestIsErrorLine(t *testing.T) {
+	tests := []struct {
+		line string
+		want bool
+	}{
+		{"2024-01-15 ERROR connection refused", true},
+		{"2024-01-15 FATAL out of memory", true},
+		{"panic: nil pointer dereference", true},
+		{"Exception in thread main", true},
+		{"CRITICAL disk full", true},
+		{"2024-01-15 INFO server started", false},
+		{"2024-01-15 DEBUG reading config", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isErrorLine(tt.line); got != tt.want {
+			t.Errorf("isErrorLine(%q) = %v, want %v", tt.line, got, tt.want)
+		}
 	}
 }
 
