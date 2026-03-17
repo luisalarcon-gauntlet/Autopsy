@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/yourusername/autopsy/internal/config"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	cfg := config.Load()
+	config.LogStartup(cfg)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -19,8 +19,8 @@ func main() {
 		w.Write([]byte("Autopsy is running"))
 	})
 
-	addr := ":" + port
-	slog.Info("Autopsy starting", "addr", addr)
+	addr := ":" + cfg.Port
+	slog.Info("Autopsy listening", "addr", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		slog.Error("server failed", "err", err)
