@@ -70,6 +70,7 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 // HandleUpload accepts a multipart upload of a .tar.gz bundle, extracts and
 // parses it, creates a session, and redirects via HTMX to the report page.
 func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Upload request received")
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

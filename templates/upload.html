@@ -15,6 +15,9 @@
     </div>
     <div class="p-6">
       <form id="upload-form"
+            method="post"
+            action="/upload"
+            enctype="multipart/form-data"
             hx-post="/upload"
             hx-encoding="multipart/form-data"
             hx-target="#upload-result"
