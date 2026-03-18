@@ -95,6 +95,8 @@
     var mb = (file.size / 1024 / 1024).toFixed(1);
     var el = document.getElementById('file-size');
     if (el) el.textContent = mb + ' MB';
+    var nameEl = document.getElementById('file-name');
+    if (nameEl) nameEl.textContent = file.name;
     console.log('File selected:', file.name, mb + 'MB');
   });
 })();
