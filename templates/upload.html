@@ -28,7 +28,8 @@
                name="bundle"
                id="file-input"
                accept=".tar.gz,.tgz"
-               class="hidden" />
+               class="hidden"
+               onchange="var f=this.files[0];if(f){document.getElementById('file-size').textContent=(f.size/1024/1024).toFixed(1)+' MB';document.getElementById('file-name').textContent=f.name;}" />
 
         <div id="drop-zone"
              class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-16 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
@@ -85,22 +86,6 @@
   <div id="upload-result" class="mt-4"></div>
 </div>
 
-<script>
-(function() {
-  var input = document.getElementById('file-input');
-  if (!input) { console.error('file-input not found'); return; }
-  input.addEventListener('change', function() {
-    var file = this.files[0];
-    if (!file) return;
-    var mb = (file.size / 1024 / 1024).toFixed(1);
-    var el = document.getElementById('file-size');
-    if (el) el.textContent = mb + ' MB';
-    var nameEl = document.getElementById('file-name');
-    if (nameEl) nameEl.textContent = file.name;
-    console.log('File selected:', file.name, mb + 'MB');
-  });
-})();
-</script>
 {{end}}
 
 {{define "scripts"}}
