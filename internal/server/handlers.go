@@ -54,10 +54,6 @@ func (h *Handler) SetTemplate(tmpl *template.Template) {
 
 // HandleIndex serves the upload page.
 func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
 	data := map[string]any{
 		"StubMode":    h.cfg.StubMode,
 		"MaxBundleMB": h.cfg.MaxBundleMB,

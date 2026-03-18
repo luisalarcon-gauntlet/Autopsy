@@ -3,6 +3,7 @@ package main
 
 import (
 	"html/template"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,10 @@ func main() {
 	// embed.FS ensures the binary is self-contained; no template files needed on disk at runtime.
 	tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html", "templates/partials/*.html"))
 
+	for _, t := range tmpl.Templates() {
+		log.Println("loaded template:", t.Name())
+	}
+
 	// The Anthropic client reads ANTHROPIC_API_KEY from the environment automatically.
 	// In stub mode the client exists but Claude calls are bypassed.
 	client := anthropic.NewClient()
@@ -28,7 +33,8 @@ func main() {
 	h.SetTemplate(tmpl)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", h.HandleIndex)
+	mux.HandleFunc("GET /{$}", h.HandleIndex)   // exact root match
+	mux.HandleFunc("GET /upload", h.HandleIndex) // upload page
 	mux.HandleFunc("POST /upload", h.HandleUpload)
 	mux.HandleFunc("GET /report/{sessionID}", h.HandleReport)
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
