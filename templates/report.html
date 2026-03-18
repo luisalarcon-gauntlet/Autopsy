@@ -170,7 +170,7 @@
 <script>
 // ── RCA Streaming via native EventSource ──────────────────────────────────────
 (function() {
-  const sessionID = {{.SessionID | printf "%q"}};
+  const sessionID = "{{.SessionID}}";
   const rcaSource = new EventSource('/stream/' + sessionID + '/rca');
   let rcaBuffer = '';
 
@@ -306,7 +306,7 @@ document.addEventListener('click', function(e) {
 });
 
 // ── Chat streaming via native EventSource ─────────────────────────────────────
-const chatSessionID = {{.SessionID | printf "%q"}};
+const chatSessionID = "{{.SessionID}}";
 let chatStreaming = false;
 
 function handleChatSubmit(e) {

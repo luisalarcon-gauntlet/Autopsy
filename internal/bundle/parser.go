@@ -4,10 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
 )
+
+// findBundleRoot unwraps the common top-level directory that troubleshoot
+// bundles place their contents inside (e.g. support-bundle-2024-01-15T11-00-00/).
+// If bundleDir contains exactly one subdirectory and no files, that subdirectory
+// is returned as the actual bundle root. Otherwise bundleDir itself is returned.
+func findBundleRoot(bundleDir string) string {
+	entries, err := os.ReadDir(bundleDir)
+	if err != nil || len(entries) != 1 || !entries[0].IsDir() {
+		return bundleDir
+	}
+	return filepath.Join(bundleDir, entries[0].Name())
+}
 
 // Parse walks the extracted bundle directory and returns structured BundleData.
 // Non-fatal errors (missing files, parse failures) are recorded in ParseErrors
@@ -19,6 +32,12 @@ func Parse(ctx context.Context, bundleDir string) (*BundleData, error) {
 		return nil, ctx.Err()
 	default:
 	}
+
+	// Troubleshoot bundles typically contain a single top-level directory
+	// (e.g. support-bundle-2024-01-15T11-00-00/). Unwrap it so all sub-parsers
+	// operate on the directory that actually contains cluster-resources/, logs/, etc.
+	bundleDir = findBundleRoot(bundleDir)
+	slog.Info("bundle root resolved", "dir", bundleDir)
 
 	data := &BundleData{}
 
@@ -50,6 +69,9 @@ func Parse(ctx context.Context, bundleDir string) (*BundleData, error) {
 		"parseErrors", len(data.ParseErrors),
 		"tokenEstimate", data.TokenEstimate,
 	)
+	for _, e := range data.ParseErrors {
+		log.Printf("parse error: %s", e)
+	}
 
 	return data, nil
 }

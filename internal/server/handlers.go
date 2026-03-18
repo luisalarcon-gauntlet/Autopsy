@@ -193,8 +193,13 @@ func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
 
 	sse, err := NewSSEWriter(w, r)
 	if err != nil {
+		slog.Error("SSE triage: failed to create SSE writer", "sessionID", sessionID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if sess.BundleData == nil {
+		slog.Warn("SSE triage: BundleData is nil, proceeding with empty data", "sessionID", sessionID)
 	}
 
 	ctx := r.Context()
@@ -257,8 +262,13 @@ func (h *Handler) HandleTimelineSSE(w http.ResponseWriter, r *http.Request) {
 
 	sse, err := NewSSEWriter(w, r)
 	if err != nil {
+		slog.Error("SSE timeline: failed to create SSE writer", "sessionID", sessionID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if sess.BundleData == nil {
+		slog.Warn("SSE timeline: BundleData is nil, proceeding with empty data", "sessionID", sessionID)
 	}
 
 	ctx := r.Context()
@@ -315,8 +325,13 @@ func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
 
 	sse, err := NewSSEWriter(w, r)
 	if err != nil {
+		slog.Error("SSE rca: failed to create SSE writer", "sessionID", sessionID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if sess.BundleData == nil {
+		slog.Warn("SSE rca: BundleData is nil, proceeding with empty data", "sessionID", sessionID)
 	}
 
 	ctx := r.Context()
