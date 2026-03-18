@@ -28,8 +28,7 @@
                name="bundle"
                id="file-input"
                accept=".tar.gz,.tgz"
-               class="hidden"
-               onchange="handleFileSelect(event)" />
+               class="hidden" />
 
         <div id="drop-zone"
              class="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
@@ -40,10 +39,10 @@
           <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
-          <p class="text-gray-700 font-medium" id="drop-zone-text">Drop your support bundle here</p>
+          <p class="text-gray-700 font-medium">Drop your support bundle here</p>
           <p class="text-sm text-gray-400 mt-1">.tar.gz or .tgz — up to {{.MaxBundleMB}}MB</p>
-          <p class="text-sm text-blue-600 mt-3 font-medium" id="selected-file-name"></p>
-          <p class="text-sm text-gray-500 mt-1" id="selected-file-size" style="display:none"><span id="file-size">0.0 MB</span></p>
+          <p class="text-sm text-blue-600 mt-3 font-medium"><span id="file-name"></span></p>
+          <p class="text-sm text-gray-500 mt-1"><span id="file-size">0.0 MB</span></p>
         </div>
 
         <div id="client-error" class="mt-3 hidden">
@@ -58,9 +57,8 @@
         <div class="mt-4 flex items-center gap-3">
           <button type="submit"
                   id="submit-btn"
-                  disabled
                   class="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2.5 text-sm font-medium
-                         hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                         hover:bg-blue-700 transition-colors
                          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
             Analyze Bundle
           </button>
@@ -90,46 +88,9 @@
 
 {{define "scripts"}}
 <script>
-const MAX_MB = {{.MaxBundleMB}};
-const VALID_EXTS = ['.tar.gz', '.tgz'];
-
-function isValidFile(name) {
-  return VALID_EXTS.some(ext => name.endsWith(ext));
-}
-
-function isValidSize(bytes) {
-  return bytes <= MAX_MB * 1024 * 1024;
-}
-
 function showClientError(msg) {
   document.getElementById('client-error-text').textContent = msg;
   document.getElementById('client-error').classList.remove('hidden');
-  document.getElementById('submit-btn').disabled = true;
-}
-
-function clearClientError() {
-  document.getElementById('client-error').classList.add('hidden');
-}
-
-function handleFileSelect(e) {
-  clearClientError();
-  const file = e.target.files[0];
-  if (!file) return;
-
-  if (!isValidFile(file.name)) {
-    showClientError('Only .tar.gz and .tgz files are accepted.');
-    document.getElementById('selected-file-name').textContent = '';
-    return;
-  }
-  if (!isValidSize(file.size)) {
-    showClientError('File exceeds the ' + MAX_MB + 'MB limit.');
-    document.getElementById('selected-file-name').textContent = '';
-    return;
-  }
-
-  document.getElementById('selected-file-name').textContent = file.name;
-  document.getElementById('selected-file-size').style.display = '';
-  document.getElementById('submit-btn').disabled = false;
 }
 
 function handleDragOver(e) {
@@ -147,22 +108,19 @@ function handleDrop(e) {
   const dropped = e.dataTransfer.files;
   if (dropped.length > 0) {
     const input = document.getElementById('file-input');
-    // Stage the file into the input via DataTransfer so input.files is readable
     const transfer = new DataTransfer();
     transfer.items.add(dropped[0]);
     input.files = transfer.files;
-    handleFileSelect({ target: input });
-    const mb = (dropped[0].size / 1024 / 1024).toFixed(1);
-    document.getElementById('file-size').textContent = mb + ' MB';
+    input.dispatchEvent(new Event('change'));
   }
 }
 
 document.getElementById('file-input').addEventListener('change', function(e) {
-  const file = e.target.files[0]
-  if (file) {
+    const file = e.target.files[0]
+    if (!file) return
     const mb = (file.size / 1024 / 1024).toFixed(1)
     document.getElementById('file-size').textContent = mb + ' MB'
-  }
+    document.getElementById('file-name').textContent = file.name
 })
 
 // Upload progress tracking
