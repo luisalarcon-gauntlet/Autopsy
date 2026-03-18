@@ -27,11 +27,12 @@ const (
 
 // Handler holds shared dependencies for all HTTP handlers.
 type Handler struct {
-	cfg    config.Config
-	tmpl   *template.Template
-	store  *session.Store
-	client *anthropic.Client
-	cache  *analysis.Cache
+	cfg        config.Config
+	tmpl       *template.Template // upload page + partials
+	reportTmpl *template.Template // report page + partials
+	store      *session.Store
+	client     *anthropic.Client
+	cache      *analysis.Cache
 }
 
 // NewHandler creates a Handler with the given configuration and API client.
@@ -46,10 +47,16 @@ func NewHandler(cfg config.Config, client *anthropic.Client) *Handler {
 	}
 }
 
-// SetTemplate attaches parsed HTML templates to the handler.
+// SetTemplate attaches the upload-page template set to the handler.
 // It must be called before the handler serves any requests that render HTML.
 func (h *Handler) SetTemplate(tmpl *template.Template) {
 	h.tmpl = tmpl
+}
+
+// SetReportTemplate attaches the report-page template set to the handler.
+// It must be called before the handler serves any report requests.
+func (h *Handler) SetReportTemplate(tmpl *template.Template) {
+	h.reportTmpl = tmpl
 }
 
 // HandleIndex serves the upload page.
@@ -150,7 +157,7 @@ func (h *Handler) HandleReport(w http.ResponseWriter, r *http.Request) {
 		"StubMode":  h.cfg.StubMode,
 		"SessionID": sess.ID,
 	}
-	if err := h.tmpl.ExecuteTemplate(w, "report.html", data); err != nil {
+	if err := h.reportTmpl.ExecuteTemplate(w, "report.html", data); err != nil {
 		slog.Error("template execution failed", "template", "report.html", "err", err)
 	}
 }

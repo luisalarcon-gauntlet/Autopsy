@@ -17,12 +17,19 @@ func main() {
 	cfg := config.Load()
 	config.LogStartup(cfg)
 
-	// Parse all templates from the embedded FS at startup — panic on failure (startup only).
-	// embed.FS ensures the binary is self-contained; no template files needed on disk at runtime.
-	tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html", "templates/partials/*.html"))
+	// Parse separate template sets per page so {{define "content"}} blocks in
+	// upload.html and report.html don't collide in the same template namespace.
+	partials := "templates/partials/*.html"
+	layout := "templates/layout.html"
 
-	for _, t := range tmpl.Templates() {
-		log.Println("loaded template:", t.Name())
+	uploadTmpl := template.Must(template.ParseFS(templateFS, layout, partials, "templates/upload.html"))
+	reportTmpl := template.Must(template.ParseFS(templateFS, layout, partials, "templates/report.html"))
+
+	for _, t := range uploadTmpl.Templates() {
+		log.Println("loaded upload template:", t.Name())
+	}
+	for _, t := range reportTmpl.Templates() {
+		log.Println("loaded report template:", t.Name())
 	}
 
 	// The Anthropic client reads ANTHROPIC_API_KEY from the environment automatically.
@@ -30,7 +37,8 @@ func main() {
 	client := anthropic.NewClient()
 
 	h := server.NewHandler(cfg, &client)
-	h.SetTemplate(tmpl)
+	h.SetTemplate(uploadTmpl)
+	h.SetReportTemplate(reportTmpl)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", h.HandleIndex)   // exact root match
