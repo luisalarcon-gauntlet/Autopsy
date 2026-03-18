@@ -1,11 +1,6 @@
 // Package bundle handles extraction and parsing of Kubernetes support bundles.
 package bundle
 
-// k8sPodList is a minimal JSON representation of a Kubernetes PodList.
-type k8sPodList struct {
-	Items []k8sPod `json:"items"`
-}
-
 type k8sPod struct {
 	Metadata k8sObjectMeta `json:"metadata"`
 	Spec     k8sPodSpec    `json:"spec"`
@@ -61,11 +56,6 @@ type k8sStateTerminated struct {
 	ExitCode int    `json:"exitCode"`
 }
 
-// k8sNodeList is a minimal JSON representation of a Kubernetes NodeList.
-type k8sNodeList struct {
-	Items []k8sNode `json:"items"`
-}
-
 type k8sNode struct {
 	Metadata k8sObjectMeta `json:"metadata"`
 	Status   k8sNodeStatus `json:"status"`
@@ -81,11 +71,6 @@ type k8sNodeCondition struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
 	Reason  string `json:"reason"`
-}
-
-// k8sEventList is a minimal JSON representation of a Kubernetes EventList.
-type k8sEventList struct {
-	Items []k8sEvent `json:"items"`
 }
 
 type k8sEvent struct {

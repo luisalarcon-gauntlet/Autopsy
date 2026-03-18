@@ -10,41 +10,82 @@ import (
 	"path/filepath"
 )
 
-// findBundleRoot locates the directory that actually contains bundle content
-// (cluster-resources/, cluster-info/, logs/, etc.). It first checks bundleDir
-// itself, then checks one level of subdirectories. This handles both wrapped
-// bundles (support-bundle-2024-xx/ wrapper) and flat bundles, and is not
-// confused by extra directories like macOS __MACOSX/ metadata.
+// findBundleRoot searches up to 3 directory levels deep for the actual bundle
+// root — the directory that contains cluster-resources/ or cluster-info/.
+// This handles flat bundles, single-wrapped bundles (support-bundle-xxx/
+// wrapper), and archives that place extra files (like logs/) at the archive
+// root alongside the wrapper directory.
 func findBundleRoot(bundleDir string) string {
-	if looksLikeBundleRoot(bundleDir) {
-		return bundleDir
+	found := walkForRoot(bundleDir, 3)
+	if found != bundleDir {
+		slog.Info("bundle root unwrapped", "from", bundleDir, "to", found)
 	}
-	entries, err := os.ReadDir(bundleDir)
-	if err != nil {
-		return bundleDir
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		candidate := filepath.Join(bundleDir, e.Name())
-		if looksLikeBundleRoot(candidate) {
-			slog.Info("bundle root unwrapped", "from", bundleDir, "to", candidate)
-			return candidate
-		}
-	}
-	return bundleDir
+	return found
 }
 
-// looksLikeBundleRoot reports whether dir contains at least one recognizable
-// top-level bundle directory.
+// walkForRoot is the recursive helper for findBundleRoot. It returns the
+// deepest directory (up to maxDepth levels below dir) that satisfies
+// looksLikeBundleRoot, or dir itself if none is found.
+func walkForRoot(dir string, maxDepth int) string {
+	if looksLikeBundleRoot(dir) {
+		return dir
+	}
+	if maxDepth <= 0 {
+		return dir
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return dir
+	}
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "__MACOSX" {
+			continue
+		}
+		if found := walkForRoot(filepath.Join(dir, e.Name()), maxDepth-1); looksLikeBundleRoot(found) {
+			return found
+		}
+	}
+	return dir
+}
+
+// looksLikeBundleRoot reports whether dir contains cluster-resources/ or
+// cluster-info/ — the unambiguous markers of a Troubleshoot bundle root.
+// "logs" is intentionally excluded: it appears in many archives at the wrong
+// level and would cause false positives.
 func looksLikeBundleRoot(dir string) bool {
-	for _, marker := range []string{"cluster-resources", "cluster-info", "logs"} {
+	for _, marker := range []string{"cluster-resources", "cluster-info"} {
 		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
 			return true
 		}
 	}
 	return false
+}
+
+// logBundleTree walks the extracted directory and logs every subdirectory
+// (up to 4 levels deep) plus files at the top 2 levels. This makes the
+// bundle structure visible in server logs for debugging root-detection issues.
+func logBundleTree(root string) {
+	slog.Info("bundle extracted", "root", root)
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		if depth > 4 {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range entries {
+			rel, _ := filepath.Rel(root, filepath.Join(dir, e.Name()))
+			if e.IsDir() {
+				slog.Info("bundle tree", "dir", rel)
+				walk(filepath.Join(dir, e.Name()), depth+1)
+			} else if depth <= 1 {
+				slog.Info("bundle tree", "file", rel)
+			}
+		}
+	}
+	walk(root, 0)
 }
 
 // Parse walks the extracted bundle directory and returns structured BundleData.
@@ -57,6 +98,10 @@ func Parse(ctx context.Context, bundleDir string) (*BundleData, error) {
 		return nil, ctx.Err()
 	default:
 	}
+
+	// Log the extracted tree before root detection so the structure is visible
+	// in server logs when debugging parsing issues.
+	logBundleTree(bundleDir)
 
 	// Troubleshoot bundles typically contain a single top-level directory
 	// (e.g. support-bundle-2024-01-15T11-00-00/). Unwrap it so all sub-parsers
@@ -144,13 +189,13 @@ func parseNodes(bundleDir string, data *BundleData) {
 		return
 	}
 
-	var list k8sNodeList
-	if err := json.Unmarshal(raw, &list); err != nil {
+	var items []k8sNode
+	if err := json.Unmarshal(raw, &items); err != nil {
 		data.ParseErrors = append(data.ParseErrors, fmt.Sprintf("nodes.json parse: %v", err))
 		return
 	}
 
-	for _, item := range list.Items {
+	for _, item := range items {
 		ns := NodeSummary{
 			Name:     item.Metadata.Name,
 			Capacity: item.Status.Capacity,
@@ -204,13 +249,13 @@ func parsePodsFile(path string, data *BundleData) {
 		return // Missing pods.json in a namespace dir is non-fatal; skip silently.
 	}
 
-	var list k8sPodList
-	if err := json.Unmarshal(raw, &list); err != nil {
+	var pods []k8sPod
+	if err := json.Unmarshal(raw, &pods); err != nil {
 		data.ParseErrors = append(data.ParseErrors, fmt.Sprintf("%s: unmarshal: %v", path, err))
 		return
 	}
 
-	for _, pod := range list.Items {
+	for _, pod := range pods {
 		data.PodSummaries = append(data.PodSummaries, buildPodSummary(pod))
 	}
 }

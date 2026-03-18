@@ -63,13 +63,13 @@ func parseEventsFile(path string) ([]ClusterEvent, error) {
 		return nil, fmt.Errorf("parseEventsFile: read: %w", err)
 	}
 
-	var list k8sEventList
-	if err := json.Unmarshal(raw, &list); err != nil {
+	var items []k8sEvent
+	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("parseEventsFile: unmarshal: %w", err)
 	}
 
-	events := make([]ClusterEvent, 0, len(list.Items))
-	for _, item := range list.Items {
+	events := make([]ClusterEvent, 0, len(items))
+	for _, item := range items {
 		events = append(events, ClusterEvent{
 			Timestamp: parseEventTimestamp(item),
 			Namespace: item.Metadata.Namespace,
