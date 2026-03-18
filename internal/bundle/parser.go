@@ -10,23 +10,41 @@ import (
 	"path/filepath"
 )
 
-// findBundleRoot unwraps the common top-level directory that troubleshoot
-// bundles place their contents inside (e.g. support-bundle-2024-01-15T11-00-00/).
-// If bundleDir contains exactly one subdirectory and no files, that subdirectory
-// is returned as the actual bundle root. Otherwise bundleDir itself is returned.
+// findBundleRoot locates the directory that actually contains bundle content
+// (cluster-resources/, cluster-info/, logs/, etc.). It first checks bundleDir
+// itself, then checks one level of subdirectories. This handles both wrapped
+// bundles (support-bundle-2024-xx/ wrapper) and flat bundles, and is not
+// confused by extra directories like macOS __MACOSX/ metadata.
 func findBundleRoot(bundleDir string) string {
+	if looksLikeBundleRoot(bundleDir) {
+		return bundleDir
+	}
 	entries, err := os.ReadDir(bundleDir)
 	if err != nil {
 		return bundleDir
 	}
-	// If there is exactly one entry and it is a directory,
-	// that is the real bundle root — go one level deeper
-	if len(entries) == 1 && entries[0].IsDir() {
-		deeper := filepath.Join(bundleDir, entries[0].Name())
-		log.Printf("bundle root unwrapped to: %s", deeper)
-		return deeper
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(bundleDir, e.Name())
+		if looksLikeBundleRoot(candidate) {
+			slog.Info("bundle root unwrapped", "from", bundleDir, "to", candidate)
+			return candidate
+		}
 	}
 	return bundleDir
+}
+
+// looksLikeBundleRoot reports whether dir contains at least one recognizable
+// top-level bundle directory.
+func looksLikeBundleRoot(dir string) bool {
+	for _, marker := range []string{"cluster-resources", "cluster-info", "logs"} {
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Parse walks the extracted bundle directory and returns structured BundleData.
