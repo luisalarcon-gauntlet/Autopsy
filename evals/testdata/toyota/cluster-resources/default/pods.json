@@ -1,0 +1,16 @@
+{"items":[
+  {
+    "metadata":{"name":"healthy-nginx-2e4c3a5z0-k5mnp","namespace":"default"},
+    "spec":{"nodeName":"kind-control-plane"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"nginx",
+        "ready":true,
+        "restartCount":0,
+        "state":{"running":{"startedAt":"2024-01-15T08:00:00Z"}},
+        "lastState":{}
+      }]
+    }
+  }
+]}

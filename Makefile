@@ -1,4 +1,4 @@
-.PHONY: dev build test lint clean demo-cluster demo-bundle \
+.PHONY: dev build test lint clean demo-cluster demo-bundle evals \
         docker-build docker-run docker-stop docker-logs docker-shell help
 
 BINARY_NAME=autopsy
@@ -92,3 +92,7 @@ docker-shell:
 ## docker-clean: Remove the autopsy image and containers
 docker-clean:
 	docker-compose down --rmi local --volumes
+
+## evals: Run AI evaluation suite (requires ANTHROPIC_API_KEY)
+evals:
+	./evals/run.sh

@@ -1,0 +1,3 @@
+// Package evals contains AI evaluation tests for the analysis pipeline.
+// Run with: go test -v -tags=evals -timeout=120s ./evals/...
+package evals

@@ -1,0 +1,22 @@
+{
+  "apiVersion": "v1",
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {"name": "coredns-5d78c9869d-abc", "namespace": "kube-system"},
+      "spec":     {"nodeName": "node-1"},
+      "status": {
+        "phase": "Running",
+        "containerStatuses": [
+          {
+            "name": "coredns",
+            "ready": true,
+            "restartCount": 0,
+            "state": {"running": {"startedAt": "2024-01-15T08:00:00Z"}},
+            "lastState": {}
+          }
+        ]
+      }
+    }
+  ]
+}

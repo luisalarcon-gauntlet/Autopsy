@@ -1,0 +1,42 @@
+{"items":[
+  {
+    "metadata":{"name":"memory-hog-oom.1a2b3c","namespace":"broken-app"},
+    "involvedObject":{"kind":"Pod","name":"memory-hog-7d9f8b6c5-xk2pq","namespace":"broken-app"},
+    "reason":"OOMKilling",
+    "message":"Memory limit of container memory-hog in pod memory-hog-7d9f8b6c5-xk2pq exceeded",
+    "type":"Warning",
+    "count":14,
+    "firstTimestamp":"2024-01-15T09:00:00Z",
+    "lastTimestamp":"2024-01-15T10:15:00Z"
+  },
+  {
+    "metadata":{"name":"bad-entrypoint-backoff.1a2b3d","namespace":"broken-app"},
+    "involvedObject":{"kind":"Pod","name":"bad-entrypoint-6b8d7f9c4-m3nvw","namespace":"broken-app"},
+    "reason":"BackOff",
+    "message":"Back-off restarting failed container bad-entrypoint in pod bad-entrypoint-6b8d7f9c4-m3nvw",
+    "type":"Warning",
+    "count":8,
+    "firstTimestamp":"2024-01-15T09:05:00Z",
+    "lastTimestamp":"2024-01-15T10:20:00Z"
+  },
+  {
+    "metadata":{"name":"bad-image-pull.1a2b3e","namespace":"broken-app"},
+    "involvedObject":{"kind":"Pod","name":"bad-image-5c7f6d8b3-p9rtx","namespace":"broken-app"},
+    "reason":"Failed",
+    "message":"Failed to pull image \"nonexistent-registry/bad-image:v1.0.0\": rpc error: code = Unknown",
+    "type":"Warning",
+    "count":3,
+    "firstTimestamp":"2024-01-15T09:10:00Z",
+    "lastTimestamp":"2024-01-15T10:05:00Z"
+  },
+  {
+    "metadata":{"name":"resource-hog-sched.1a2b3f","namespace":"broken-app"},
+    "involvedObject":{"kind":"Pod","name":"resource-hog-4a6e5c7b2-q8swz","namespace":"broken-app"},
+    "reason":"FailedScheduling",
+    "message":"0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available.",
+    "type":"Warning",
+    "count":5,
+    "firstTimestamp":"2024-01-15T09:15:00Z",
+    "lastTimestamp":"2024-01-15T10:10:00Z"
+  }
+]}

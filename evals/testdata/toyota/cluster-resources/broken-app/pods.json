@@ -1,0 +1,72 @@
+{"items":[
+  {
+    "metadata":{"name":"memory-hog-7d9f8b6c5-xk2pq","namespace":"broken-app"},
+    "spec":{"nodeName":"kind-control-plane"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"memory-hog",
+        "ready":false,
+        "restartCount":14,
+        "state":{"waiting":{"reason":"CrashLoopBackOff","message":"back-off 5m0s restarting failed container"}},
+        "lastState":{"terminated":{"reason":"OOMKilled","exitCode":137,"message":"OOM killed"}}
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"bad-entrypoint-6b8d7f9c4-m3nvw","namespace":"broken-app"},
+    "spec":{"nodeName":"kind-control-plane"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"bad-entrypoint",
+        "ready":false,
+        "restartCount":8,
+        "state":{"waiting":{"reason":"CrashLoopBackOff","message":"back-off 2m30s restarting failed container"}},
+        "lastState":{"terminated":{"reason":"Error","exitCode":1,"message":"container exited with code 1"}}
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"bad-image-5c7f6d8b3-p9rtx","namespace":"broken-app"},
+    "spec":{},
+    "status":{
+      "phase":"Pending",
+      "containerStatuses":[{
+        "name":"bad-image",
+        "ready":false,
+        "restartCount":0,
+        "state":{"waiting":{"reason":"ImagePullBackOff","message":"Back-off pulling image \"nonexistent-registry/bad-image:v1.0.0\""}},
+        "lastState":{}
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"resource-hog-4a6e5c7b2-q8swz","namespace":"broken-app"},
+    "spec":{},
+    "status":{
+      "phase":"Pending",
+      "containerStatuses":[],
+      "conditions":[{
+        "type":"PodScheduled",
+        "status":"False",
+        "reason":"Unschedulable",
+        "message":"0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available."
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"missing-config-3f5d4b6a1-r7tvx","namespace":"broken-app"},
+    "spec":{"nodeName":"kind-control-plane"},
+    "status":{
+      "phase":"Pending",
+      "containerStatuses":[{
+        "name":"missing-config",
+        "ready":false,
+        "restartCount":0,
+        "state":{"waiting":{"reason":"CreateContainerConfigError","message":"secret \"app-secrets\" not found"}},
+        "lastState":{}
+      }]
+    }
+  }
+]}

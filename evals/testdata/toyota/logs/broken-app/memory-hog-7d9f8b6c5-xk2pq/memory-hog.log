@@ -1,0 +1,7 @@
+2024-01-15T10:14:50Z INFO  Starting memory hog process
+2024-01-15T10:14:51Z INFO  Allocating memory in 100MB chunks
+2024-01-15T10:14:52Z INFO  Allocated 100MB
+2024-01-15T10:14:53Z INFO  Allocated 200MB
+2024-01-15T10:14:54Z INFO  Allocated 300MB
+2024-01-15T10:14:55Z ERROR Out of memory error: cannot allocate more than 512Mi
+2024-01-15T10:14:55Z FATAL Process killed due to OOM: memory usage exceeded limit
