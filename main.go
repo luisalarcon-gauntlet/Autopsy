@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/joho/godotenv"
 	"github.com/yourusername/autopsy/internal/config"
 	"github.com/yourusername/autopsy/internal/db"
 	"github.com/yourusername/autopsy/internal/server"
@@ -19,6 +20,7 @@ import (
 var version = "v1.0.0"
 
 func main() {
+	_ = godotenv.Load()
 	cfg := config.Load()
 	config.LogStartup(cfg)
 
