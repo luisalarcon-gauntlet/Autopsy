@@ -2,229 +2,543 @@
 
 {{define "title"}}Autopsy — Analysis Report{{end}}
 
+{{define "main_class"}}overflow-hidden{{end}}
+
 {{define "content"}}
-<div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Bundle Analysis</h1>
-    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Kubernetes cluster health report</p>
-  </div>
-  <a href="/" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm transition-colors">
-    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"/>
-    </svg>
-    New Analysis
-  </a>
-</div>
+<div class="flex h-full">
 
-<!-- 2×2 analysis grid -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+  {{/* ── SIDEBAR ─────────────────────────────────────────────────────── */}}
+  <aside class="w-56 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
 
-  <!-- ── Risk Scorecard (HTMX SSE — one-shot swap) ── -->
-  <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span id="triage-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Risk Scorecard</h2>
+    {{/* Logo + bundle meta */}}
+    <div class="px-5 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800">
+      <div class="flex items-center gap-1.5">
+        <span class="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Autopsy</span>
+        <span class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" aria-hidden="true"></span>
       </div>
-      <span class="text-xs text-gray-400">Phase 1</span>
-    </div>
-    <div hx-ext="sse"
-         sse-connect="/stream/{{.SessionID}}/triage"
-         hx-on:htmx:sse-open="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-blue-400 animate-pulse'"
-         hx-on:htmx:sse-close="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-green-400'; loadSuggestions()">
-      <div id="triage-content"
-           sse-swap="triage-update"
-           hx-swap="innerHTML">
-        <div class="animate-pulse space-y-3 p-8" aria-label="Loading risk scorecard">
-          <div class="h-16 bg-gray-100 dark:bg-gray-700 rounded-lg w-1/3"></div>
-          <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
-          <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
-          <div class="space-y-2 pt-2">
-            <div class="h-10 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
-            <div class="h-10 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
-            <div class="h-10 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
-          </div>
-        </div>
+      <div class="mt-2.5 space-y-0.5">
+        <p class="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">support-bundle</p>
+        <p id="analyzed-time" class="text-xs text-gray-400 dark:text-gray-500">Analyzing...</p>
       </div>
     </div>
-  </div>
 
-  <!-- ── Failure Timeline (HTMX SSE — one-shot swap) ── -->
-  <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span id="timeline-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Failure Timeline</h2>
-      </div>
-      <span class="text-xs text-gray-400">Phase 2</span>
-    </div>
-    <div hx-ext="sse"
-         sse-connect="/stream/{{.SessionID}}/timeline"
-         hx-on:htmx:sse-open="document.getElementById('timeline-dot').className='w-2 h-2 rounded-full bg-blue-400 animate-pulse'"
-         hx-on:htmx:sse-close="document.getElementById('timeline-dot').className='w-2 h-2 rounded-full bg-green-400'">
-      <div id="timeline-content"
-           sse-swap="timeline-update"
-           hx-swap="innerHTML">
-        <div class="animate-pulse space-y-4 p-8" aria-label="Loading failure timeline">
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
-              <div class="w-px flex-1 bg-gray-100 dark:bg-gray-700 mt-1 h-10"></div>
-            </div>
-            <div class="flex-1 pb-8 space-y-1">
-              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/4"></div>
-              <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-full"></div>
-            </div>
-          </div>
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
-              <div class="w-px flex-1 bg-gray-100 dark:bg-gray-700 mt-1 h-10"></div>
-            </div>
-            <div class="flex-1 pb-8 space-y-1">
-              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/3"></div>
-              <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-3/4"></div>
-            </div>
-          </div>
-          <div class="flex gap-4">
-            <div class="flex flex-col items-center">
-              <div class="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
-            </div>
-            <div class="flex-1 pb-8 space-y-1">
-              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/4"></div>
-              <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-5/6"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+    {{/* Navigation */}}
+    <nav class="flex-1 py-2 overflow-y-auto" aria-label="Sections">
 
-  <!-- ── Root Cause Analysis (native EventSource — streaming) ── -->
-  <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span id="rca-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Root Cause Analysis</h2>
-      </div>
-      <span id="rca-phase-label" class="text-xs text-gray-400">Phase 3 · streaming</span>
-    </div>
-    <div id="rca-content" class="p-8 max-h-[520px] overflow-y-auto">
-      <div id="rca-loading" class="animate-pulse space-y-3" aria-label="Loading root cause analysis">
-        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/3"></div>
-        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
-        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
-        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-2/3"></div>
-        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
-        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
-      </div>
-      <div id="rca-stream" class="hidden text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed"></div>
-      <div id="rca-rendered" class="hidden prose-sm"></div>
-    </div>
-  </div>
-
-  <!-- ── Chat Interface ── -->
-  <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md overflow-hidden flex flex-col h-[520px]">
-    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Ask the Bundle</h2>
-      <span class="text-xs text-gray-400">Chat</span>
-    </div>
-    <div class="flex-1 overflow-y-auto p-4 space-y-1" id="chat-messages">
-      <div id="chat-placeholder" class="text-sm text-gray-400 text-center py-8">
-        <svg class="mx-auto w-8 h-8 text-gray-200 dark:text-gray-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z"/>
+      {{/* Overview — active by default */}}
+      <button data-section="overview" onclick="showSection('overview')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
         </svg>
-        Chat is available after analysis completes.
+        Overview
+      </button>
+
+      {{/* Issues */}}
+      <button data-section="issues" onclick="showSection('issues')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <span>Issues</span>
+        <span id="badge-issues" class="hidden ml-auto text-xs font-bold bg-red-500 text-white rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center leading-none">0</span>
+      </button>
+
+      {{/* Timeline */}}
+      <button data-section="timeline" onclick="showSection('timeline')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span>Timeline</span>
+        <span id="badge-timeline" class="hidden ml-auto text-xs font-bold bg-amber-500 text-white rounded-full min-w-[1.25rem] h-5 px-1 flex items-center justify-center leading-none">0</span>
+      </button>
+
+      {{/* Root Cause */}}
+      <button data-section="rca" onclick="showSection('rca')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        Root Cause
+      </button>
+
+      {{/* Logs */}}
+      <button data-section="logs" onclick="showSection('logs')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        Logs
+      </button>
+
+      {{/* Ask the Bundle */}}
+      <button data-section="chat" onclick="showSection('chat')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z"/>
+        </svg>
+        Ask the bundle
+      </button>
+
+      {{/* Fix Steps */}}
+      <button data-section="fixsteps" onclick="showSection('fixsteps')"
+              class="nav-btn w-full flex items-center gap-2.5 pl-3 pr-3 py-2 text-sm font-medium border-l-2 border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors text-left">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Fix steps
+      </button>
+
+    </nav>
+
+    {{/* New Analysis */}}
+    <div class="p-3 border-t border-gray-100 dark:border-gray-800">
+      <a href="/"
+         class="flex items-center justify-center gap-1.5 w-full px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New analysis
+      </a>
+    </div>
+
+  </aside>
+
+  {{/* ── MAIN AREA ───────────────────────────────────────────────────── */}}
+  <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+    {{/* Header bar */}}
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 py-4 flex items-center justify-between flex-shrink-0">
+      <div>
+        <h1 id="page-title" class="text-base font-semibold text-gray-900 dark:text-white">Overview</h1>
+        <p id="page-subtitle" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" aria-live="polite">—</p>
+      </div>
+      <div id="severity-pill"
+           class="text-sm font-semibold px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 transition-colors">
+        — / 100
       </div>
     </div>
-    <!-- Suggested questions populated after triage completes -->
-    <div id="chat-suggestions" class="hidden border-t border-gray-100 dark:border-gray-700"></div>
-    <div class="border-t border-gray-100 dark:border-gray-700 p-4 flex-shrink-0">
-      <form id="chat-form" class="flex gap-2" onsubmit="return handleChatSubmit(event)">
-        <input type="text"
-               name="message"
-               id="chat-input"
-               placeholder="Ask about this cluster..."
-               autocomplete="off"
-               class="flex-1 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-lg px-3 py-2
-                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                      disabled:opacity-50 disabled:cursor-not-allowed"
-               disabled />
-        <button type="submit"
-                id="chat-submit"
-                disabled
-                class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium
-                       hover:bg-blue-700 transition-colors
-                       focus:outline-none focus:ring-2 focus:ring-blue-500
-                       disabled:opacity-40 disabled:cursor-not-allowed">
-          Send
-        </button>
-      </form>
+
+    {{/* Scrollable content */}}
+    <div class="flex-1 overflow-y-auto px-8 py-6">
+
+      {{/* ── OVERVIEW (default) ── */}}
+      <div id="section-overview">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+          {{/* Risk Scorecard */}}
+          <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <span id="triage-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
+              <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Risk Scorecard</h2>
+            </div>
+            <div hx-ext="sse"
+                 sse-connect="/stream/{{.SessionID}}/triage"
+                 hx-on:htmx:sse-open="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-blue-400 animate-pulse'"
+                 hx-on:htmx:sse-close="document.getElementById('triage-dot').className='w-2 h-2 rounded-full bg-green-400';onTriageComplete()">
+              <div id="triage-content" sse-swap="triage-update" hx-swap="innerHTML">
+                <div class="animate-pulse p-6 space-y-3" aria-label="Loading risk scorecard">
+                  <div class="h-14 bg-gray-100 dark:bg-gray-700 rounded-lg w-1/3"></div>
+                  <div class="h-2.5 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+                  <div class="h-2.5 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
+                  <div class="space-y-2 pt-1">
+                    <div class="h-9 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="h-9 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
+                    <div class="h-9 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {{/* Failure Timeline */}}
+          <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <span id="timeline-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
+              <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Failure Timeline</h2>
+            </div>
+            <div hx-ext="sse"
+                 sse-connect="/stream/{{.SessionID}}/timeline"
+                 hx-on:htmx:sse-open="document.getElementById('timeline-dot').className='w-2 h-2 rounded-full bg-blue-400 animate-pulse'"
+                 hx-on:htmx:sse-close="document.getElementById('timeline-dot').className='w-2 h-2 rounded-full bg-green-400';onTimelineComplete()">
+              <div id="timeline-content" sse-swap="timeline-update" hx-swap="innerHTML">
+                <div class="animate-pulse p-6 space-y-4" aria-label="Loading failure timeline">
+                  <div class="flex gap-4">
+                    <div class="flex flex-col items-center flex-shrink-0">
+                      <div class="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
+                      <div class="w-px h-10 bg-gray-100 dark:bg-gray-700 mt-1"></div>
+                    </div>
+                    <div class="flex-1 pb-4 space-y-1.5">
+                      <div class="h-2.5 bg-gray-200 dark:bg-gray-600 rounded w-1/4"></div>
+                      <div class="h-2.5 bg-gray-100 dark:bg-gray-700 rounded w-full"></div>
+                    </div>
+                  </div>
+                  <div class="flex gap-4">
+                    <div class="flex flex-col items-center flex-shrink-0">
+                      <div class="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
+                      <div class="w-px h-10 bg-gray-100 dark:bg-gray-700 mt-1"></div>
+                    </div>
+                    <div class="flex-1 pb-4 space-y-1.5">
+                      <div class="h-2.5 bg-gray-200 dark:bg-gray-600 rounded w-1/3"></div>
+                      <div class="h-2.5 bg-gray-100 dark:bg-gray-700 rounded w-3/4"></div>
+                    </div>
+                  </div>
+                  <div class="flex gap-4">
+                    <div class="flex flex-col items-center flex-shrink-0">
+                      <div class="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
+                    </div>
+                    <div class="flex-1 space-y-1.5">
+                      <div class="h-2.5 bg-gray-200 dark:bg-gray-600 rounded w-1/4"></div>
+                      <div class="h-2.5 bg-gray-100 dark:bg-gray-700 rounded w-5/6"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {{/* Root Cause Analysis (overview card) */}}
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mb-6">
+          <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+            <span id="rca-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
+            <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Root Cause Analysis</h2>
+            <span id="rca-phase-label" class="ml-auto text-xs text-gray-400">Phase 3 · streaming</span>
+          </div>
+          <div id="rca-content" class="p-8 max-h-[360px] overflow-y-auto">
+            <div id="rca-loading" class="animate-pulse space-y-3" aria-label="Loading root cause analysis">
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/3"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-2/3"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+            </div>
+            <div id="rca-stream" class="hidden text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed"></div>
+            <div id="rca-rendered" class="hidden"></div>
+          </div>
+        </div>
+
+        {{/* Chat widget placeholder — JS teleports #chat-card here */}}
+        <div id="chat-in-overview"></div>
+      </div>
+
+      {{/* ── ISSUES ── */}}
+      <div id="section-issues" class="hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Issues</h2>
+          </div>
+          <div id="issues-full-content">
+            <div class="p-8 text-sm text-gray-400">Loading issues...</div>
+          </div>
+        </div>
+      </div>
+
+      {{/* ── TIMELINE ── */}}
+      <div id="section-timeline" class="hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Failure Timeline</h2>
+          </div>
+          <div id="timeline-full-content">
+            <div class="p-8 text-sm text-gray-400">Loading timeline...</div>
+          </div>
+        </div>
+      </div>
+
+      {{/* ── ROOT CAUSE ── */}}
+      <div id="section-rca" class="hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Root Cause Analysis</h2>
+          </div>
+          <div id="rca-full-content" class="p-8">
+            <p class="text-sm text-gray-400">Waiting for analysis to complete...</p>
+          </div>
+        </div>
+      </div>
+
+      {{/* ── CHAT (widget teleported here by JS) ── */}}
+      <div id="section-chat" class="hidden"></div>
+
+      {{/* ── LOGS ── */}}
+      <div id="section-logs" class="hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
+          <svg class="w-10 h-10 text-gray-200 dark:text-gray-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <p class="text-sm font-medium text-gray-400">Log browsing coming soon</p>
+          <p class="text-xs text-gray-300 dark:text-gray-600 mt-1">View raw container logs from the bundle</p>
+        </div>
+      </div>
+
+      {{/* ── FIX STEPS ── */}}
+      <div id="section-fixsteps" class="hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
+          <svg class="w-10 h-10 text-gray-200 dark:text-gray-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <p class="text-sm font-medium text-gray-400">Fix steps coming soon</p>
+          <p class="text-xs text-gray-300 dark:text-gray-600 mt-1">Step-by-step remediation instructions</p>
+        </div>
+      </div>
+
+    </div>{{/* end scrollable content */}}
+  </div>{{/* end main area */}}
+
+</div>{{/* end flex h-full */}}
+
+{{/* ── CHAT WIDGET ─────────────────────────────────────────────────────
+     Lives outside the section flow and is teleported by JS between
+     #chat-in-overview (overview) and #section-chat (chat section).
+──────────────────────────────────────────────────────────────────────── */}}
+<div id="chat-card" class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col h-[480px]">
+  <div class="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 flex-shrink-0">
+    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z"/>
+    </svg>
+    <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Ask the Bundle</h2>
+  </div>
+  <div class="flex-1 overflow-y-auto p-4 space-y-1" id="chat-messages">
+    <div id="chat-placeholder" class="text-sm text-gray-400 text-center py-8">
+      <svg class="mx-auto w-8 h-8 text-gray-200 dark:text-gray-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z"/>
+      </svg>
+      Chat is available after analysis completes.
     </div>
   </div>
-
+  <div id="chat-suggestions" class="hidden border-t border-gray-100 dark:border-gray-700 flex-shrink-0"></div>
+  <div class="border-t border-gray-100 dark:border-gray-700 p-4 flex-shrink-0">
+    <form id="chat-form" class="flex gap-2" onsubmit="return handleChatSubmit(event)">
+      <input type="text"
+             name="message"
+             id="chat-input"
+             placeholder="Ask about this cluster..."
+             autocomplete="off"
+             class="flex-1 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+             disabled />
+      <button type="submit" id="chat-submit" disabled
+              class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
+        Send
+      </button>
+    </form>
+  </div>
 </div>
 {{end}}
 
 {{define "scripts"}}
 <script>
-// ── RCA Streaming via native EventSource ──────────────────────────────────────
-(function() {
-  const sessionID = "{{.SessionID}}";
-  const rcaSource = new EventSource('/stream/' + sessionID + '/rca');
-  let rcaBuffer = '';
+// ── Globals ────────────────────────────────────────────────────────────────
+var rcaBuffer = '';
+var chatStreaming = false;
+var currentSection = 'overview';
 
-  const dotEl    = document.getElementById('rca-dot');
-  const loadEl   = document.getElementById('rca-loading');
-  const streamEl = document.getElementById('rca-stream');
-  const renderEl = document.getElementById('rca-rendered');
-  const labelEl  = document.getElementById('rca-phase-label');
+// ── Teleport chat card into overview on load ───────────────────────────────
+(function() {
+  var ov = document.getElementById('chat-in-overview');
+  var card = document.getElementById('chat-card');
+  if (ov && card) ov.appendChild(card);
+})();
+
+// ── Section navigation ─────────────────────────────────────────────────────
+var SECTION_TITLES = {
+  overview: 'Overview',
+  issues:   'Issues',
+  timeline: 'Failure Timeline',
+  rca:      'Root Cause Analysis',
+  chat:     'Ask the Bundle',
+  logs:     'Logs',
+  fixsteps: 'Fix Steps',
+};
+
+var NAV_ACTIVE   = ['border-red-500', 'bg-red-50', 'dark:bg-red-900/20', 'text-red-700', 'dark:text-red-300'];
+var NAV_INACTIVE = ['border-transparent', 'text-gray-600', 'dark:text-gray-400'];
+
+function showSection(name) {
+  if (name === currentSection) return;
+  currentSection = name;
+
+  // Toggle section visibility
+  document.querySelectorAll('[id^="section-"]').forEach(function(el) {
+    el.classList.add('hidden');
+  });
+  document.getElementById('section-' + name).classList.remove('hidden');
+
+  // Update nav styles
+  document.querySelectorAll('.nav-btn').forEach(function(btn) {
+    var active = btn.dataset.section === name;
+    if (active) {
+      NAV_INACTIVE.forEach(function(c) { btn.classList.remove(c); });
+      NAV_ACTIVE.forEach(function(c)   { btn.classList.add(c);    });
+    } else {
+      NAV_ACTIVE.forEach(function(c)   { btn.classList.remove(c); });
+      NAV_INACTIVE.forEach(function(c) { btn.classList.add(c);    });
+    }
+  });
+
+  // Update header title
+  document.getElementById('page-title').textContent = SECTION_TITLES[name] || name;
+
+  // Teleport chat card
+  var card = document.getElementById('chat-card');
+  if (name === 'chat') {
+    var sc = document.getElementById('section-chat');
+    sc.appendChild(card);
+    card.style.height = 'calc(100vh - 12rem)';
+    card.style.display = '';
+  } else if (name === 'overview') {
+    var ov = document.getElementById('chat-in-overview');
+    ov.appendChild(card);
+    card.style.height = '480px';
+    card.style.display = '';
+  } else {
+    card.style.display = 'none';
+  }
+
+  // Populate full-width sections from cached DOM
+  if (name === 'issues') {
+    var src = document.getElementById('triage-content');
+    var dst = document.getElementById('issues-full-content');
+    if (src && src.querySelector(':not(.animate-pulse)')) {
+      dst.innerHTML = src.innerHTML;
+    }
+  }
+  if (name === 'timeline') {
+    var src = document.getElementById('timeline-content');
+    var dst = document.getElementById('timeline-full-content');
+    if (src && src.querySelector(':not(.animate-pulse)')) {
+      dst.innerHTML = src.innerHTML;
+    }
+  }
+  if (name === 'rca') {
+    var dst = document.getElementById('rca-full-content');
+    if (rcaBuffer) {
+      dst.innerHTML = renderMarkdown(rcaBuffer);
+      addCopyButtons(dst);
+    }
+  }
+}
+
+// ── Triage SSE complete ────────────────────────────────────────────────────
+function onTriageComplete() {
+  var content = document.getElementById('triage-content');
+  if (!content) return;
+
+  // Badge: count issue rows (border-l-4)
+  var count = content.querySelectorAll('.border-l-4').length;
+  if (count > 0) {
+    var badge = document.getElementById('badge-issues');
+    badge.textContent = count;
+    badge.classList.remove('hidden');
+  }
+
+  // Severity pill: read score from text-7xl element
+  var scoreEl = content.querySelector('.text-7xl');
+  if (scoreEl) {
+    var score = parseInt(scoreEl.textContent.trim(), 10);
+    var healthEl = content.querySelector('.rounded-full.text-sm');
+    var health = healthEl ? healthEl.textContent.trim() : '';
+    updateSeverityPill(score, health);
+  }
+
+  // Subtitle: count namespace badges
+  var nsBadges = content.querySelectorAll('.font-mono.text-xs');
+  if (nsBadges.length > 0) {
+    document.getElementById('page-subtitle').textContent =
+      nsBadges.length + ' affected namespace' + (nsBadges.length === 1 ? '' : 's');
+  }
+
+  document.getElementById('analyzed-time').textContent = 'Just analyzed';
+}
+
+function updateSeverityPill(score, health) {
+  var pill = document.getElementById('severity-pill');
+  if (!pill) return;
+  pill.textContent = score + ' / 100' + (health ? ' · ' + health : '');
+  var base = 'text-sm font-semibold px-3 py-1.5 rounded-full transition-colors ';
+  if (score > 70)     pill.className = base + 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400';
+  else if (score >= 40) pill.className = base + 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400';
+  else                  pill.className = base + 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400';
+}
+
+// ── Timeline SSE complete ──────────────────────────────────────────────────
+function onTimelineComplete() {
+  var content = document.getElementById('timeline-content');
+  if (!content) return;
+  // Count dots (rounded-full elements inside the timeline)
+  var count = content.querySelectorAll('.rounded-full.mt-1').length;
+  if (count > 0) {
+    var badge = document.getElementById('badge-timeline');
+    badge.textContent = count;
+    badge.classList.remove('hidden');
+  }
+}
+
+// ── RCA Streaming via native EventSource ──────────────────────────────────
+(function() {
+  var sessionID = '{{.SessionID}}';
+  var src = new EventSource('/stream/' + sessionID + '/rca');
+  var dotEl    = document.getElementById('rca-dot');
+  var loadEl   = document.getElementById('rca-loading');
+  var streamEl = document.getElementById('rca-stream');
+  var renderEl = document.getElementById('rca-rendered');
+  var labelEl  = document.getElementById('rca-phase-label');
 
   dotEl.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse';
 
-  rcaSource.addEventListener('rca-chunk', function(e) {
+  src.addEventListener('rca-chunk', function(e) {
     rcaBuffer += e.data;
     loadEl.classList.add('hidden');
     streamEl.classList.remove('hidden');
     streamEl.textContent = rcaBuffer;
   });
 
-  rcaSource.addEventListener('done', function() {
-    rcaSource.close();
+  src.addEventListener('done', function() {
+    src.close();
     dotEl.className = 'w-2 h-2 rounded-full bg-green-400';
     labelEl.textContent = 'Phase 3 · complete';
     streamEl.classList.add('hidden');
     renderEl.classList.remove('hidden');
     renderEl.innerHTML = renderMarkdown(rcaBuffer);
     addCopyButtons(renderEl);
-    // Enable chat now that analysis is fully done
+    // Enable chat
     document.getElementById('chat-input').disabled  = false;
     document.getElementById('chat-submit').disabled = false;
-    const chatPlaceholder = document.getElementById('chat-placeholder');
-    if (chatPlaceholder) chatPlaceholder.remove();
+    var ph = document.getElementById('chat-placeholder');
+    if (ph) ph.remove();
+    loadSuggestions();
   });
 
-  rcaSource.onerror = function() {
-    rcaSource.close();
+  src.onerror = function() {
+    src.close();
     dotEl.className = 'w-2 h-2 rounded-full bg-red-400';
+    labelEl.textContent = 'Phase 3 · error';
     if (!rcaBuffer) {
       loadEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Root cause analysis failed to load.</p>';
     }
   };
 })();
 
-// ── Markdown renderer ─────────────────────────────────────────────────────────
+// ── Markdown renderer ─────────────────────────────────────────────────────
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function renderMarkdown(raw) {
-  let out = '';
-  const re = /```(?:[^\n]*)\n([\s\S]*?)```/g;
-  let last = 0, m;
+  var out = '', re = /```(?:[^\n]*)\n([\s\S]*?)```/g, last = 0, m;
   while ((m = re.exec(raw)) !== null) {
     out += renderText(raw.slice(last, m.index));
-    const code = m[1].replace(/\n$/, '');
+    var code = m[1].replace(/\n$/, '');
     out += '<div class="relative my-4 group">' +
       '<pre class="bg-gray-900 text-green-400 p-5 rounded-xl overflow-x-auto text-xs font-mono leading-relaxed">' +
       '<code>' + escHtml(code) + '</code></pre>' +
@@ -238,19 +552,13 @@ function renderMarkdown(raw) {
 }
 
 function renderText(text) {
-  let t = escHtml(text);
-  t = t.replace(/^## (.+)$/gm,
-    '<h2 class="text-base font-semibold text-gray-900 dark:text-white mt-6 mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">$1</h2>');
-  t = t.replace(/^### (.+)$/gm,
-    '<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-4 mb-1">$1</h3>');
-  t = t.replace(/\*\*([^*\n]+)\*\*/g,
-    '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>');
-  t = t.replace(/`([^`\n]+)`/g,
-    '<code class="bg-gray-100 dark:bg-gray-700 text-pink-600 dark:text-pink-400 px-1 py-0.5 rounded text-xs font-mono">$1</code>');
-  t = t.replace(/^- (.+)$/gm,
-    '<li class="ml-4 text-sm text-gray-700 dark:text-gray-300 my-0.5 list-disc list-inside">$1</li>');
-  t = t.replace(/^\d+\. (.+)$/gm,
-    '<li class="ml-4 text-sm text-gray-700 dark:text-gray-300 my-1 list-decimal list-inside">$1</li>');
+  var t = escHtml(text);
+  t = t.replace(/^## (.+)$/gm, '<h2 class="text-base font-semibold text-gray-900 dark:text-white mt-6 mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">$1</h2>');
+  t = t.replace(/^### (.+)$/gm, '<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-4 mb-1">$1</h3>');
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>');
+  t = t.replace(/`([^`\n]+)`/g, '<code class="bg-gray-100 dark:bg-gray-700 text-pink-600 dark:text-pink-400 px-1 py-0.5 rounded text-xs font-mono">$1</code>');
+  t = t.replace(/^- (.+)$/gm, '<li class="ml-4 text-sm text-gray-700 dark:text-gray-300 my-0.5 list-disc list-inside">$1</li>');
+  t = t.replace(/^\d+\. (.+)$/gm, '<li class="ml-4 text-sm text-gray-700 dark:text-gray-300 my-1 list-decimal list-inside">$1</li>');
   t = t.replace(/\n\n+/g, '</p><p class="text-sm text-gray-700 dark:text-gray-300 my-2">');
   t = '<p class="text-sm text-gray-700 dark:text-gray-300 my-2">' + t + '</p>';
   t = t.replace(/<p[^>]*>\s*<\/p>/g, '');
@@ -262,7 +570,7 @@ function renderText(text) {
 function addCopyButtons(container) {
   container.querySelectorAll('.copy-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      const code = this.dataset.code;
+      var code = this.dataset.code;
       navigator.clipboard.writeText(code).then(function() {
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
@@ -274,37 +582,33 @@ function addCopyButtons(container) {
   });
 }
 
-// ── Suggested questions ───────────────────────────────────────────────────────
+// ── Suggested questions ───────────────────────────────────────────────────
 function loadSuggestions() {
-  fetch('/suggestions/' + chatSessionID)
+  fetch('/suggestions/{{.SessionID}}')
     .then(function(r) { return r.ok ? r.text() : ''; })
     .then(function(html) {
       if (!html || !html.trim()) return;
-      const el = document.getElementById('chat-suggestions');
+      var el = document.getElementById('chat-suggestions');
       if (el) { el.innerHTML = html; el.classList.remove('hidden'); }
     })
-    .catch(function() { /* suggestions are optional */ });
+    .catch(function() {});
 }
 
-// Suggestion pill click: populate input and submit immediately.
 document.addEventListener('click', function(e) {
-  const pill = e.target.closest('.suggestion-pill');
+  var pill = e.target.closest('.suggestion-pill');
   if (!pill || chatStreaming) return;
-  const q = pill.dataset.question;
+  var q = pill.dataset.question;
   if (!q) return;
-  const sugg = document.getElementById('chat-suggestions');
+  var sugg = document.getElementById('chat-suggestions');
   if (sugg) sugg.classList.add('hidden');
   sendChatMessage(q);
 });
 
-// ── Chat streaming via native EventSource ─────────────────────────────────────
-const chatSessionID = "{{.SessionID}}";
-let chatStreaming = false;
-
+// ── Chat streaming ────────────────────────────────────────────────────────
 function handleChatSubmit(e) {
   e.preventDefault();
-  const input = document.getElementById('chat-input');
-  const msg = input.value.trim();
+  var input = document.getElementById('chat-input');
+  var msg = input.value.trim();
   if (!msg || chatStreaming) return false;
   sendChatMessage(msg);
   return false;
@@ -312,26 +616,23 @@ function handleChatSubmit(e) {
 
 function sendChatMessage(msg) {
   chatStreaming = true;
-  const input  = document.getElementById('chat-input');
-  const submit = document.getElementById('chat-submit');
+  var input  = document.getElementById('chat-input');
+  var submit = document.getElementById('chat-submit');
   input.disabled  = true;
   submit.disabled = true;
   input.value = '';
 
-  const msgs = document.getElementById('chat-messages');
-
-  const ph = document.getElementById('chat-placeholder');
+  var msgs = document.getElementById('chat-messages');
+  var ph = document.getElementById('chat-placeholder');
   if (ph) ph.remove();
 
-  // User bubble.
-  const userBubble = document.createElement('div');
+  var userBubble = document.createElement('div');
   userBubble.className = 'flex justify-end mb-3';
   userBubble.innerHTML = '<div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 max-w-xs text-sm leading-relaxed break-words">' + escHtml(msg) + '</div>';
   msgs.appendChild(userBubble);
   msgs.scrollTop = msgs.scrollHeight;
 
-  // Typing indicator inside assistant bubble.
-  const asstWrap = document.createElement('div');
+  var asstWrap = document.createElement('div');
   asstWrap.className = 'flex justify-start mb-3';
   asstWrap.innerHTML =
     '<div id="chat-asst-bubble" class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">' +
@@ -343,40 +644,31 @@ function sendChatMessage(msg) {
   msgs.appendChild(asstWrap);
   msgs.scrollTop = msgs.scrollHeight;
 
-  const encoded = encodeURIComponent(msg);
-  const src = new EventSource('/chat/' + chatSessionID + '/stream?message=' + encoded);
-  let buffer = '';
-  let typingRemoved = false;
+  var src = new EventSource('/chat/{{.SessionID}}/stream?message=' + encodeURIComponent(msg));
+  var buffer = '', typingRemoved = false;
 
   src.addEventListener('chat-chunk', function(e) {
     buffer += e.data;
     if (!typingRemoved) {
       typingRemoved = true;
-      const typing = document.getElementById('chat-typing');
-      if (typing) typing.remove();
+      var t = document.getElementById('chat-typing');
+      if (t) t.remove();
     }
-    const bubble = document.getElementById('chat-asst-bubble');
+    var bubble = document.getElementById('chat-asst-bubble');
     if (bubble) bubble.textContent = buffer;
     msgs.scrollTop = msgs.scrollHeight;
   });
 
   src.addEventListener('chat-error', function(e) {
-    const bubble = document.getElementById('chat-asst-bubble');
-    if (bubble) {
-      bubble.textContent = 'Error: ' + e.data;
-      bubble.classList.add('text-red-600', 'dark:text-red-400');
-    }
+    var bubble = document.getElementById('chat-asst-bubble');
+    if (bubble) { bubble.textContent = 'Error: ' + e.data; bubble.classList.add('text-red-600'); }
   });
 
   src.addEventListener('done', function() {
     src.close();
     chatStreaming = false;
-    const bubble = document.getElementById('chat-asst-bubble');
-    if (bubble) {
-      bubble.id = '';
-      bubble.innerHTML = renderMarkdown(buffer);
-      addCopyButtons(bubble);
-    }
+    var bubble = document.getElementById('chat-asst-bubble');
+    if (bubble) { bubble.id = ''; bubble.innerHTML = renderMarkdown(buffer); addCopyButtons(bubble); }
     msgs.scrollTop = msgs.scrollHeight;
     input.disabled  = false;
     submit.disabled = false;
@@ -386,12 +678,12 @@ function sendChatMessage(msg) {
   src.onerror = function() {
     src.close();
     chatStreaming = false;
-    const bubble = document.getElementById('chat-asst-bubble');
+    var bubble = document.getElementById('chat-asst-bubble');
     if (bubble && !buffer) {
-      const typing = document.getElementById('chat-typing');
-      if (typing) typing.remove();
+      var t = document.getElementById('chat-typing');
+      if (t) t.remove();
       bubble.textContent = 'Connection error — please try again.';
-      bubble.classList.add('text-red-600', 'dark:text-red-400');
+      bubble.classList.add('text-red-600');
     }
     input.disabled  = false;
     submit.disabled = false;
