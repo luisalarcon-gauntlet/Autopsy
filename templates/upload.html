@@ -147,8 +147,7 @@ function handleDrop(e) {
     const transfer = new DataTransfer();
     transfer.items.add(dropped[0]);
     input.files = transfer.files;
-    // Dispatch a real change event so the onchange handler fires with event.target
-    input.dispatchEvent(new Event('change'));
+    handleFileSelect({ target: input });
   }
 }
 
