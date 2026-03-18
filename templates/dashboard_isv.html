@@ -12,7 +12,8 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
     {{range .Customers}}
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col gap-3">
+    <a href="/customers/{{.Slug}}"
+       class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col gap-3 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all">
       <div class="flex items-start justify-between">
         <p class="font-semibold text-gray-900 dark:text-white">{{.Name}}</p>
         {{if eq .Health "critical"}}
@@ -44,8 +45,8 @@
           {{end}}
         </div>
       </div>
-      <a href="/upload" class="mt-auto text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">Analyze bundle →</a>
-    </div>
+      <span class="mt-auto text-xs font-medium text-blue-600 dark:text-blue-400">View history →</span>
+    </a>
     {{end}}
   </div>
 

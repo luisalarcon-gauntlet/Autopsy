@@ -33,13 +33,30 @@
 
         {{if and .User (eq .User.Role "isv")}}
         <div class="mb-4">
-          <label for="customer-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Which customer is this bundle from?
+          </label>
+          {{if .CustomerNames}}
           <select id="customer-select" name="customer"
-                  class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400">
-            {{range .Customers}}
-            <option value="{{.Name}}">{{.Name}}</option>
+                  onchange="handleCustomerChange(this)"
+                  class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 mb-2">
+            {{range .CustomerNames}}
+            <option value="{{.}}">{{.}}</option>
             {{end}}
+            <option value="__new__">+ New customer…</option>
           </select>
+          <div id="new-customer-wrap" class="hidden">
+            <input type="text" name="customer_new" id="customer-new-input"
+                   placeholder="Enter customer name"
+                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400" />
+          </div>
+          {{else}}
+          <!-- No existing customers yet — show free-text input directly. -->
+          <input type="text" name="customer_new" id="customer-new-input"
+                 placeholder="Enter customer name"
+                 class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400" />
+          <input type="hidden" name="customer" value="__new__" />
+          {{end}}
         </div>
         {{end}}
 
@@ -101,6 +118,17 @@
 
 {{define "scripts"}}
 <script>
+function handleCustomerChange(select) {
+  var wrap = document.getElementById('new-customer-wrap');
+  var input = document.getElementById('customer-new-input');
+  if (select.value === '__new__') {
+    wrap.classList.remove('hidden');
+    if (input) input.focus();
+  } else {
+    wrap.classList.add('hidden');
+  }
+}
+
 function showClientError(msg) {
   document.getElementById('client-error-text').textContent = msg;
   document.getElementById('client-error').classList.remove('hidden');

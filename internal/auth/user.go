@@ -1,7 +1,10 @@
 // Package auth provides hardcoded demo user accounts and HTTP context helpers.
 package auth
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 const (
 	RoleISV      = "isv"
@@ -22,6 +25,12 @@ type Customer struct {
 	Name          string
 	SeverityScore int
 	Health        string // critical | warning | healthy
+}
+
+// Slug returns the URL-safe slug for this customer name,
+// e.g. "Goldman Sachs" → "goldman-sachs".
+func (c Customer) Slug() string {
+	return strings.ToLower(strings.ReplaceAll(c.Name, " ", "-"))
 }
 
 // InboxRow is a bundle-inbox entry for platform users.

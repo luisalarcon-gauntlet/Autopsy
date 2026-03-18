@@ -31,19 +31,20 @@ const (
 
 // Handler holds shared dependencies for all HTTP handlers.
 type Handler struct {
-	cfg          config.Config
-	tmpl         *template.Template // upload page + partials
-	reportTmpl   *template.Template // report page + partials
-	loginTmpl    *template.Template // login page (standalone)
-	isvTmpl      *template.Template // ISV dashboard
-	platformTmpl *template.Template // platform dashboard
-	bundlesTmpl  *template.Template // bundle history page
-	store        *session.Store
-	client       *anthropic.Client
-	cache        *analysis.Cache
-	db           *db.DB // nil when DATABASE_URL is not set
-	startTime    time.Time
-	version      string
+	cfg            config.Config
+	tmpl           *template.Template // upload page + partials
+	reportTmpl     *template.Template // report page + partials
+	loginTmpl      *template.Template // login page (standalone)
+	isvTmpl        *template.Template // ISV dashboard
+	platformTmpl   *template.Template // platform dashboard
+	bundlesTmpl    *template.Template // bundle history page
+	customerTmpl   *template.Template // customer detail page
+	store          *session.Store
+	client         *anthropic.Client
+	cache          *analysis.Cache
+	db             *db.DB // nil when DATABASE_URL is not set
+	startTime      time.Time
+	version        string
 }
 
 // NewHandler creates a Handler with the given configuration and API client.
@@ -83,6 +84,9 @@ func (h *Handler) SetPlatformTemplate(tmpl *template.Template) { h.platformTmpl 
 
 // SetBundlesTemplate attaches the bundle history page template to the handler.
 func (h *Handler) SetBundlesTemplate(tmpl *template.Template) { h.bundlesTmpl = tmpl }
+
+// SetCustomerTemplate attaches the customer detail page template to the handler.
+func (h *Handler) SetCustomerTemplate(tmpl *template.Template) { h.customerTmpl = tmpl }
 
 // SetDB attaches a database connection to the handler. May be nil for in-memory-only mode.
 func (h *Handler) SetDB(d *db.DB) { h.db = d }
@@ -128,6 +132,17 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 		data["User"] = user
 		if user.Role == auth.RoleISV {
 			data["Customers"] = auth.ISVCustomers[user.Username]
+			// Populate customer name list from DB if available; fall back to hardcoded.
+			var customerNames []string
+			if h.db != nil {
+				customerNames, _ = h.db.GetDistinctCustomers(r.Context(), user.Username)
+			}
+			if len(customerNames) == 0 {
+				for _, c := range auth.ISVCustomers[user.Username] {
+					customerNames = append(customerNames, c.Name)
+				}
+			}
+			data["CustomerNames"] = customerNames
 		}
 	}
 	if err := h.tmpl.ExecuteTemplate(w, "upload.html", data); err != nil {
@@ -220,13 +235,19 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	h.store.Set(sess.ID, sess)
 	slog.Info("session created", "sessionID", sess.ID, "sha256_prefix", bundleSHA256[:8])
 
+	// Resolve customer name: "__new__" means use the free-text field.
+	customerName := r.FormValue("customer")
+	if customerName == "__new__" {
+		customerName = strings.TrimSpace(r.FormValue("customer_new"))
+	}
+
 	// Persist bundle record to DB (non-fatal on error).
 	if h.db != nil {
 		user, _ := auth.FromContext(r.Context())
 		if err := h.db.InsertBundle(r.Context(), db.Bundle{
 			ID:            sess.ID,
 			OrgID:         user.Username,
-			CustomerName:  r.FormValue("customer"),
+			CustomerName:  customerName,
 			Filename:      name,
 			FileSizeBytes: int64(len(fileBytes)),
 			SHA256:        bundleSHA256,
@@ -237,7 +258,12 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("HX-Redirect", "/report/"+sess.ID)
+	// Redirect to customer detail page when a customer is tagged; otherwise report.
+	redirectTo := "/report/" + sess.ID
+	if customerName != "" {
+		redirectTo = "/customers/" + nameToSlug(customerName)
+	}
+	w.Header().Set("HX-Redirect", redirectTo)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -808,6 +834,82 @@ func generateSuggestedQuestions(triage *analysis.TriageResult) []string {
 	return questions
 }
 
+// HandleCustomerDetail serves GET /customers/{customerSlug}.
+// customerSlug is the lowercase customer name with spaces replaced by hyphens,
+// e.g. "Toyota" → "toyota", "Goldman Sachs" → "goldman-sachs".
+func (h *Handler) HandleCustomerDetail(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.FromContext(r.Context())
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	slug := r.PathValue("customerSlug")
+
+	if h.db == nil {
+		http.Error(w, "Database not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	bundles, err := h.db.GetBundlesByCustomer(r.Context(), user.Username, slug)
+	if err != nil {
+		slog.Error("GetBundlesByCustomer failed", "slug", slug, "err", err)
+		http.Error(w, "Failed to load customer data", http.StatusInternalServerError)
+		return
+	}
+
+	if len(bundles) == 0 {
+		http.Error(w, "Customer not found", http.StatusNotFound)
+		return
+	}
+
+	customerName := bundles[0].CustomerName
+
+	// Build chart data in chronological (oldest-first) order for the trend graph.
+	// Bundles are returned DESC from DB; reverse for the chart.
+	n := len(bundles)
+	chartLabels := make([]string, n)
+	chartScores := make([]int, n)
+	for i, b := range bundles {
+		j := n - 1 - i
+		chartLabels[j] = b.UploadedAt.Format("Jan 2")
+		chartScores[j] = b.SeverityScore
+	}
+
+	labelsJSON, _ := json.Marshal(chartLabels)
+	scoresJSON, _ := json.Marshal(chartScores)
+
+	latestSeverity := bundles[0].SeverityScore
+	latestHealth := bundles[0].ClusterHealth
+	if latestHealth == "" {
+		if latestSeverity >= 70 {
+			latestHealth = "critical"
+		} else if latestSeverity >= 40 {
+			latestHealth = "warning"
+		} else {
+			latestHealth = "healthy"
+		}
+	}
+
+	data := map[string]any{
+		"StubMode":       h.cfg.StubMode,
+		"User":           user,
+		"CustomerName":   customerName,
+		"Bundles":        bundles,
+		"TotalBundles":   n,
+		"LatestSeverity": latestSeverity,
+		"LatestHealth":   latestHealth,
+		"ChartLabels":    template.JS(labelsJSON),
+		"ChartScores":    template.JS(scoresJSON),
+		"HasBundles":     n > 0,
+		"SingleBundle":   n == 1,
+	}
+
+	if err := h.customerTmpl.ExecuteTemplate(w, "customer_detail.html", data); err != nil {
+		slog.Error("template execution failed", "template", "customer_detail.html", "err", err)
+	}
+}
+
 // HandleBundles serves GET /bundles — the bundle history page for the current user's org.
 func (h *Handler) HandleBundles(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"StubMode": h.cfg.StubMode}
@@ -982,6 +1084,12 @@ type accumulatingWriter struct {
 func (a *accumulatingWriter) Write(p []byte) (int, error) {
 	a.buf.Write(p) // strings.Builder.Write never returns an error
 	return a.delegate.Write(p)
+}
+
+// nameToSlug converts a customer display name to a URL slug,
+// e.g. "Goldman Sachs" → "goldman-sachs".
+func nameToSlug(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
 
 // jsonError writes a JSON error body with the given HTTP status code.

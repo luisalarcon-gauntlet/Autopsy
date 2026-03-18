@@ -30,12 +30,20 @@ const RCASystemPrompt = `You are an expert Kubernetes SRE performing root cause 
 You will receive structured data from a Kubernetes support bundle.
 Your job is to identify the root cause of failures and provide actionable remediation steps.
 
-Format your response as structured markdown with these EXACT sections:
+Format your response as structured markdown with these EXACT sections in this EXACT order:
+
+## TL;DR
+**Cluster health:** [one sentence describing overall cluster state]
+**Critical pods:** [count] failing, [count] healthy
+**Root cause confidence:** [High/Medium/Low]
+**Estimated fix time:** [X minutes]
+
 ## Root Cause
 ## Evidence
 ## Fix Steps
 ## Prevention
 
+Always begin with the TL;DR section exactly as shown above before any other content.
 In Fix Steps, always provide exact kubectl commands. Be specific about namespace and resource names.
 In Evidence, cite specific pod names, event reasons, and log lines from the data provided.`
 
@@ -105,10 +113,11 @@ Bundle data:
 %s
 
 Produce a structured markdown report with the following sections in order:
-1. ## Root Cause — What is the primary failure and why did it occur?
-2. ## Evidence — Specific pod names, event reasons, log lines, and metrics from the bundle that support your conclusion.
-3. ## Fix Steps — Numbered list of exact kubectl commands to remediate the issues.
-4. ## Prevention — How to prevent recurrence.
+1. ## TL;DR — Four bold fields: Cluster health (one sentence), Critical pods (X failing, Y healthy), Root cause confidence (High/Medium/Low), Estimated fix time (X minutes).
+2. ## Root Cause — What is the primary failure and why did it occur?
+3. ## Evidence — Specific pod names, event reasons, log lines, and metrics from the bundle that support your conclusion.
+4. ## Fix Steps — Numbered list of exact kubectl commands to remediate the issues.
+5. ## Prevention — How to prevent recurrence.
 
 Be specific. Reference actual pod names, namespaces, and error messages from the bundle.`, string(dataJSON))
 }

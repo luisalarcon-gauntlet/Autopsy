@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/yourusername/autopsy/internal/config"
 	"github.com/yourusername/autopsy/internal/db"
+	"github.com/yourusername/autopsy/internal/seed"
 	"github.com/yourusername/autopsy/internal/server"
 )
 
@@ -35,6 +36,7 @@ func main() {
 	isvTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/dashboard_isv.html"))
 	platformTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/dashboard_platform.html"))
 	bundlesTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/bundles.html"))
+	customerTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/customer_detail.html"))
 
 	for _, t := range uploadTmpl.Templates() {
 		log.Println("loaded upload template:", t.Name())
@@ -55,6 +57,7 @@ func main() {
 	h.SetISVTemplate(isvTmpl)
 	h.SetPlatformTemplate(platformTmpl)
 	h.SetBundlesTemplate(bundlesTmpl)
+	h.SetCustomerTemplate(customerTmpl)
 
 	// Connect to PostgreSQL if DATABASE_URL is set.
 	// Failure is non-fatal: app runs fully in-memory without a DB.
@@ -68,6 +71,8 @@ func main() {
 		} else {
 			h.SetDB(dbConn)
 			defer dbConn.Close()
+			// Seed demo data for Airbyte org on every startup (idempotent).
+			seed.Run(context.Background(), dbConn)
 		}
 	} else {
 		slog.Warn("DATABASE_URL not set — running without persistence")
@@ -92,6 +97,9 @@ func main() {
 	mux.HandleFunc("POST /chat/{sessionID}", h.HandleChat)
 	mux.HandleFunc("GET /chat/{sessionID}/stream", h.HandleChatSSE)
 	mux.HandleFunc("GET /suggestions/{sessionID}", h.HandleSuggestions)
+
+	// Customer detail page
+	mux.HandleFunc("GET /customers/{customerSlug}", h.HandleCustomerDetail)
 
 	// Bundle history and download
 	mux.HandleFunc("GET /bundles", h.HandleBundles)
