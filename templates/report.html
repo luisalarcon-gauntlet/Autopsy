@@ -5,10 +5,10 @@
 {{define "content"}}
 <div class="mb-6 flex items-center justify-between">
   <div>
-    <h1 class="text-2xl font-bold text-gray-900">Bundle Analysis</h1>
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Bundle Analysis</h1>
     <p class="text-sm text-gray-400 font-mono mt-1">Session: {{.SessionID}}</p>
   </div>
-  <a href="/" class="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+  <a href="/" class="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"/>
     </svg>
@@ -20,11 +20,11 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
   <!-- ── Risk Scorecard (HTMX SSE — one-shot swap) ── -->
-  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span id="triage-dot" class="w-2 h-2 rounded-full bg-gray-300 animate-pulse" aria-hidden="true"></span>
-        <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Risk Scorecard</h2>
+        <span id="triage-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Risk Scorecard</h2>
       </div>
       <span class="text-xs text-gray-400">Phase 1</span>
     </div>
@@ -36,13 +36,13 @@
            sse-swap="triage-update"
            hx-swap="innerHTML">
         <div class="animate-pulse space-y-3 p-6" aria-label="Loading risk scorecard">
-          <div class="h-12 bg-gray-100 rounded-lg w-1/3"></div>
-          <div class="h-3 bg-gray-200 rounded w-full"></div>
-          <div class="h-3 bg-gray-200 rounded w-5/6"></div>
+          <div class="h-12 bg-gray-100 dark:bg-gray-700 rounded-lg w-1/3"></div>
+          <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+          <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
           <div class="space-y-2 pt-2">
-            <div class="h-8 bg-gray-100 rounded-lg"></div>
-            <div class="h-8 bg-gray-100 rounded-lg"></div>
-            <div class="h-8 bg-gray-100 rounded-lg"></div>
+            <div class="h-8 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
+            <div class="h-8 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
+            <div class="h-8 bg-gray-100 dark:bg-gray-700 rounded-lg"></div>
           </div>
         </div>
       </div>
@@ -50,11 +50,11 @@
   </div>
 
   <!-- ── Failure Timeline (HTMX SSE — one-shot swap) ── -->
-  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span id="timeline-dot" class="w-2 h-2 rounded-full bg-gray-300 animate-pulse" aria-hidden="true"></span>
-        <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Failure Timeline</h2>
+        <span id="timeline-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Failure Timeline</h2>
       </div>
       <span class="text-xs text-gray-400">Phase 2</span>
     </div>
@@ -68,31 +68,31 @@
         <div class="animate-pulse space-y-4 p-6" aria-label="Loading failure timeline">
           <div class="flex gap-4">
             <div class="flex flex-col items-center">
-              <div class="w-3 h-3 rounded-full bg-gray-200 mt-1"></div>
-              <div class="w-px flex-1 bg-gray-100 mt-1 h-8"></div>
+              <div class="w-3 h-3 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
+              <div class="w-px flex-1 bg-gray-100 dark:bg-gray-700 mt-1 h-8"></div>
             </div>
             <div class="flex-1 pb-6 space-y-1">
-              <div class="h-3 bg-gray-200 rounded w-1/4"></div>
-              <div class="h-3 bg-gray-100 rounded w-full"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/4"></div>
+              <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-full"></div>
             </div>
           </div>
           <div class="flex gap-4">
             <div class="flex flex-col items-center">
-              <div class="w-3 h-3 rounded-full bg-gray-200 mt-1"></div>
-              <div class="w-px flex-1 bg-gray-100 mt-1 h-8"></div>
+              <div class="w-3 h-3 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
+              <div class="w-px flex-1 bg-gray-100 dark:bg-gray-700 mt-1 h-8"></div>
             </div>
             <div class="flex-1 pb-6 space-y-1">
-              <div class="h-3 bg-gray-200 rounded w-1/3"></div>
-              <div class="h-3 bg-gray-100 rounded w-3/4"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/3"></div>
+              <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-3/4"></div>
             </div>
           </div>
           <div class="flex gap-4">
             <div class="flex flex-col items-center">
-              <div class="w-3 h-3 rounded-full bg-gray-200 mt-1"></div>
+              <div class="w-3 h-3 rounded-full bg-gray-200 dark:bg-gray-600 mt-1"></div>
             </div>
             <div class="flex-1 pb-6 space-y-1">
-              <div class="h-3 bg-gray-200 rounded w-1/4"></div>
-              <div class="h-3 bg-gray-100 rounded w-5/6"></div>
+              <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/4"></div>
+              <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-5/6"></div>
             </div>
           </div>
         </div>
@@ -101,52 +101,52 @@
   </div>
 
   <!-- ── Root Cause Analysis (native EventSource — streaming) ── -->
-  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span id="rca-dot" class="w-2 h-2 rounded-full bg-gray-300 animate-pulse" aria-hidden="true"></span>
-        <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Root Cause Analysis</h2>
+        <span id="rca-dot" class="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 animate-pulse" aria-hidden="true"></span>
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Root Cause Analysis</h2>
       </div>
       <span id="rca-phase-label" class="text-xs text-gray-400">Phase 3 · streaming</span>
     </div>
     <div id="rca-content" class="p-6 max-h-[520px] overflow-y-auto">
       <div id="rca-loading" class="animate-pulse space-y-3" aria-label="Loading root cause analysis">
-        <div class="h-3 bg-gray-200 rounded w-1/3"></div>
-        <div class="h-3 bg-gray-200 rounded w-full"></div>
-        <div class="h-3 bg-gray-200 rounded w-5/6"></div>
-        <div class="h-3 bg-gray-200 rounded w-2/3"></div>
-        <div class="h-3 bg-gray-200 rounded w-full"></div>
-        <div class="h-3 bg-gray-200 rounded w-3/4"></div>
+        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-1/3"></div>
+        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-5/6"></div>
+        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-2/3"></div>
+        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-full"></div>
+        <div class="h-3 bg-gray-200 dark:bg-gray-600 rounded w-3/4"></div>
       </div>
-      <div id="rca-stream" class="hidden text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed"></div>
+      <div id="rca-stream" class="hidden text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed"></div>
       <div id="rca-rendered" class="hidden prose-sm"></div>
     </div>
   </div>
 
   <!-- ── Chat Interface ── -->
-  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col" style="min-height:400px">
-    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Ask the Bundle</h2>
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col" style="min-height:400px">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Ask the Bundle</h2>
       <span class="text-xs text-gray-400">Chat</span>
     </div>
     <div class="flex-1 overflow-y-auto p-4 space-y-1" id="chat-messages" style="min-height:200px;max-height:360px">
       <div id="chat-placeholder" class="text-sm text-gray-400 text-center py-8">
-        <svg class="mx-auto w-8 h-8 text-gray-200 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <svg class="mx-auto w-8 h-8 text-gray-200 dark:text-gray-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z"/>
         </svg>
         Chat is available after analysis completes.
       </div>
     </div>
     <!-- Suggested questions populated after triage completes -->
-    <div id="chat-suggestions" class="hidden border-t border-gray-50"></div>
-    <div class="border-t border-gray-100 p-4">
+    <div id="chat-suggestions" class="hidden border-t border-gray-100 dark:border-gray-700"></div>
+    <div class="border-t border-gray-100 dark:border-gray-700 p-4">
       <form id="chat-form" class="flex gap-2" onsubmit="return handleChatSubmit(event)">
         <input type="text"
                name="message"
                id="chat-input"
                placeholder="Ask about this cluster..."
                autocomplete="off"
-               class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2
+               class="flex-1 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-lg px-3 py-2
                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                       disabled:opacity-50 disabled:cursor-not-allowed"
                disabled />
@@ -208,7 +208,7 @@
     rcaSource.close();
     dotEl.className = 'w-2 h-2 rounded-full bg-red-400';
     if (!rcaBuffer) {
-      loadEl.innerHTML = '<p class="text-sm text-red-600">Root cause analysis failed to load.</p>';
+      loadEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Root cause analysis failed to load.</p>';
     }
   };
 })();
@@ -218,9 +218,12 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function isDark() {
+  return document.documentElement.classList.contains('dark');
+}
+
 function renderMarkdown(raw) {
   let out = '';
-  // Split on fenced code blocks to process separately
   const re = /```(?:[^\n]*)\n([\s\S]*?)```/g;
   let last = 0, m;
   while ((m = re.exec(raw)) !== null) {
@@ -240,27 +243,20 @@ function renderMarkdown(raw) {
 
 function renderText(text) {
   let t = escHtml(text);
-  // H2 / H3 headers
   t = t.replace(/^## (.+)$/gm,
-    '<h2 class="text-base font-semibold text-gray-900 mt-6 mb-2 pb-1 border-b border-gray-100">$1</h2>');
+    '<h2 class="text-base font-semibold text-gray-900 dark:text-white mt-6 mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">$1</h2>');
   t = t.replace(/^### (.+)$/gm,
-    '<h3 class="text-sm font-semibold text-gray-800 mt-4 mb-1">$1</h3>');
-  // Bold
+    '<h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-4 mb-1">$1</h3>');
   t = t.replace(/\*\*([^*\n]+)\*\*/g,
-    '<strong class="font-semibold text-gray-900">$1</strong>');
-  // Inline code
+    '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>');
   t = t.replace(/`([^`\n]+)`/g,
-    '<code class="bg-gray-100 text-pink-600 px-1 py-0.5 rounded text-xs font-mono">$1</code>');
-  // Bullet list items
+    '<code class="bg-gray-100 dark:bg-gray-700 text-pink-600 dark:text-pink-400 px-1 py-0.5 rounded text-xs font-mono">$1</code>');
   t = t.replace(/^- (.+)$/gm,
-    '<li class="ml-4 text-sm text-gray-700 my-0.5 list-disc list-inside">$1</li>');
-  // Numbered list items
+    '<li class="ml-4 text-sm text-gray-700 dark:text-gray-300 my-0.5 list-disc list-inside">$1</li>');
   t = t.replace(/^\d+\. (.+)$/gm,
-    '<li class="ml-4 text-sm text-gray-700 my-1 list-decimal list-inside">$1</li>');
-  // Paragraphs from double newlines
-  t = t.replace(/\n\n+/g, '</p><p class="text-sm text-gray-700 my-2">');
-  t = '<p class="text-sm text-gray-700 my-2">' + t + '</p>';
-  // Remove empty paragraphs and unwrap headers from paragraphs
+    '<li class="ml-4 text-sm text-gray-700 dark:text-gray-300 my-1 list-decimal list-inside">$1</li>');
+  t = t.replace(/\n\n+/g, '</p><p class="text-sm text-gray-700 dark:text-gray-300 my-2">');
+  t = '<p class="text-sm text-gray-700 dark:text-gray-300 my-2">' + t + '</p>';
   t = t.replace(/<p[^>]*>\s*<\/p>/g, '');
   t = t.replace(/<p[^>]*>\s*(<h[23])/g, '$1');
   t = t.replace(/(<\/h[23]>)\s*<\/p>/g, '$1');
@@ -342,7 +338,7 @@ function sendChatMessage(msg) {
   const asstWrap = document.createElement('div');
   asstWrap.className = 'flex justify-start mb-3';
   asstWrap.innerHTML =
-    '<div id="chat-asst-bubble" class="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">' +
+    '<div id="chat-asst-bubble" class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">' +
     '<span id="chat-typing" class="flex gap-1 items-center" aria-label="Typing">' +
     '<span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>' +
     '<span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>' +
@@ -372,7 +368,7 @@ function sendChatMessage(msg) {
     const bubble = document.getElementById('chat-asst-bubble');
     if (bubble) {
       bubble.textContent = 'Error: ' + e.data;
-      bubble.classList.add('text-red-600');
+      bubble.classList.add('text-red-600', 'dark:text-red-400');
     }
   });
 
@@ -399,7 +395,7 @@ function sendChatMessage(msg) {
       const typing = document.getElementById('chat-typing');
       if (typing) typing.remove();
       bubble.textContent = 'Connection error — please try again.';
-      bubble.classList.add('text-red-600');
+      bubble.classList.add('text-red-600', 'dark:text-red-400');
     }
     input.disabled  = false;
     submit.disabled = false;

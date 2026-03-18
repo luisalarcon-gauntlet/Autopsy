@@ -6,7 +6,7 @@
   </div>
 </div>
 <div class="flex justify-start mb-3">
-  <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">
+  <div class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-2xl rounded-bl-sm px-4 py-2 max-w-sm text-sm leading-relaxed break-words">
     {{.Response}}
   </div>
 </div>
@@ -17,8 +17,8 @@
 <div class="px-4 pb-3 pt-2 flex flex-wrap gap-2">
   {{range .}}
   <button type="button"
-          class="suggestion-pill text-xs bg-blue-50 text-blue-700 border border-blue-200
-                 rounded-full px-3 py-1.5 hover:bg-blue-100 active:bg-blue-200 transition-colors text-left"
+          class="suggestion-pill text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700
+                 rounded-full px-3 py-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/50 active:bg-blue-200 dark:active:bg-blue-900/70 transition-colors text-left"
           data-question="{{.}}">
     {{.}}
   </button>

@@ -5,13 +5,13 @@
 {{define "content"}}
 <div class="max-w-2xl mx-auto">
   <div class="text-center mb-8">
-    <h1 class="text-3xl font-bold text-gray-900 mb-2">Kubernetes Support Bundle Analyzer</h1>
-    <p class="text-gray-500">Upload a Replicated Troubleshoot bundle to get an AI-powered root cause analysis.</p>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Kubernetes Support Bundle Analyzer</h1>
+    <p class="text-gray-500 dark:text-gray-400">Upload a Replicated Troubleshoot bundle to get an AI-powered root cause analysis.</p>
   </div>
 
-  <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-100">
-      <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Upload Bundle</h2>
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+      <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">Upload Bundle</h2>
     </div>
     <div class="p-6">
       <form id="upload-form"
@@ -31,22 +31,22 @@
                class="hidden" />
 
         <div id="drop-zone"
-             class="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+             class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-16 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
              onclick="document.getElementById('file-input').click()"
              ondragover="handleDragOver(event)"
              ondragleave="handleDragLeave(event)"
              ondrop="handleDrop(event)">
-          <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
-          <p class="text-gray-700 font-medium">Drop your support bundle here</p>
-          <p class="text-sm text-gray-400 mt-1">.tar.gz or .tgz — up to {{.MaxBundleMB}}MB</p>
-          <p class="text-sm text-blue-600 mt-3 font-medium"><span id="file-name"></span></p>
-          <p class="text-sm text-gray-500 mt-1"><span id="file-size">0.0 MB</span></p>
+          <p class="text-gray-700 dark:text-gray-200 font-medium">Drop your support bundle here</p>
+          <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">.tar.gz or .tgz — up to {{.MaxBundleMB}}MB</p>
+          <p class="text-sm text-blue-600 dark:text-blue-400 mt-3 font-medium"><span id="file-name"></span></p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1"><span id="file-size">0.0 MB</span></p>
         </div>
 
         <div id="client-error" class="mt-3 hidden">
-          <p class="text-sm text-red-600 flex items-center gap-1">
+          <p class="text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
             </svg>
@@ -59,12 +59,12 @@
                   id="submit-btn"
                   class="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2.5 text-sm font-medium
                          hover:bg-blue-700 transition-colors
-                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
             Analyze Bundle
           </button>
 
           <div id="upload-spinner" class="htmx-indicator">
-            <span class="flex items-center gap-2 text-sm text-gray-500">
+            <span class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <span class="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full inline-block"></span>
               <span>Uploading...</span>
             </span>
@@ -72,7 +72,7 @@
         </div>
 
         <div id="progress-container" class="mt-3 hidden">
-          <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div class="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
             <div id="progress-bar" class="h-full bg-blue-500 rounded-full transition-all duration-200" style="width: 0%"></div>
           </div>
         </div>
@@ -81,7 +81,7 @@
     </div>
   </div>
 
-  <div id="upload-error" class="mt-3 text-red-600 text-sm"></div>
+  <div id="upload-error" class="mt-3 text-red-600 dark:text-red-400 text-sm"></div>
   <div id="upload-result" class="mt-4"></div>
 </div>
 
@@ -110,11 +110,24 @@ function showClientError(msg) {
 
 function handleDragOver(e) {
   e.preventDefault();
-  document.getElementById('drop-zone').classList.add('border-blue-400', 'bg-blue-50');
+  var zone = document.getElementById('drop-zone');
+  zone.classList.add('border-blue-400');
+  zone.classList.remove('border-gray-300', 'border-gray-600');
+  if (document.documentElement.classList.contains('dark')) {
+    zone.classList.add('bg-blue-900/10');
+  } else {
+    zone.classList.add('bg-blue-50');
+  }
 }
 
 function handleDragLeave(e) {
-  document.getElementById('drop-zone').classList.remove('border-blue-400', 'bg-blue-50');
+  var zone = document.getElementById('drop-zone');
+  zone.classList.remove('border-blue-400', 'bg-blue-50', 'bg-blue-900/10');
+  if (document.documentElement.classList.contains('dark')) {
+    zone.classList.add('border-gray-600');
+  } else {
+    zone.classList.add('border-gray-300');
+  }
 }
 
 function handleDrop(e) {
