@@ -18,6 +18,13 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
+// Flush implements http.Flusher by delegating to the underlying writer if it supports flushing.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // RequestLogger returns middleware that logs each request with its method,
 // path, response status code, and elapsed time.
 func RequestLogger(next http.Handler) http.Handler {

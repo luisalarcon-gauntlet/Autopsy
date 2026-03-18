@@ -16,10 +16,17 @@ import (
 // is returned as the actual bundle root. Otherwise bundleDir itself is returned.
 func findBundleRoot(bundleDir string) string {
 	entries, err := os.ReadDir(bundleDir)
-	if err != nil || len(entries) != 1 || !entries[0].IsDir() {
+	if err != nil {
 		return bundleDir
 	}
-	return filepath.Join(bundleDir, entries[0].Name())
+	// If there is exactly one entry and it is a directory,
+	// that is the real bundle root — go one level deeper
+	if len(entries) == 1 && entries[0].IsDir() {
+		deeper := filepath.Join(bundleDir, entries[0].Name())
+		log.Printf("bundle root unwrapped to: %s", deeper)
+		return deeper
+	}
+	return bundleDir
 }
 
 // Parse walks the extracted bundle directory and returns structured BundleData.
