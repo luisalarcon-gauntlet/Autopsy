@@ -26,7 +26,7 @@
                id="file-input"
                accept=".tar.gz,.tgz"
                class="hidden"
-               onchange="handleFileSelect(this)" />
+               onchange="handleFileSelect(event)" />
 
         <div id="drop-zone"
              class="border-2 border-dashed border-gray-300 rounded-xl p-16 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
@@ -79,6 +79,7 @@
     </div>
   </div>
 
+  <div id="upload-error" class="mt-3 text-red-600 text-sm"></div>
   <div id="upload-result" class="mt-4"></div>
 </div>
 {{end}}
@@ -106,9 +107,9 @@ function clearClientError() {
   document.getElementById('client-error').classList.add('hidden');
 }
 
-function handleFileSelect(input) {
+function handleFileSelect(e) {
   clearClientError();
-  const file = input.files[0];
+  const file = e.target.files[0];
   if (!file) return;
 
   if (!isValidFile(file.name)) {
@@ -139,11 +140,15 @@ function handleDragLeave(e) {
 function handleDrop(e) {
   e.preventDefault();
   handleDragLeave(e);
-  const dt = e.dataTransfer;
-  if (dt.files.length > 0) {
+  const dropped = e.dataTransfer.files;
+  if (dropped.length > 0) {
     const input = document.getElementById('file-input');
-    input.files = dt.files;
-    handleFileSelect(input);
+    // Stage the file into the input via DataTransfer so input.files is readable
+    const transfer = new DataTransfer();
+    transfer.items.add(dropped[0]);
+    input.files = transfer.files;
+    // Dispatch a real change event so the onchange handler fires with event.target
+    input.dispatchEvent(new Event('change'));
   }
 }
 
@@ -172,6 +177,7 @@ document.body.addEventListener('htmx:responseError', function(e) {
     if (body.error) msg = body.error;
   } catch (_) {}
   showClientError(msg);
+  document.getElementById('upload-error').textContent = msg;
   document.getElementById('upload-result').innerHTML = '';
 });
 
