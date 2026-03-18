@@ -42,6 +42,8 @@ type Handler struct {
 	client       *anthropic.Client
 	cache        *analysis.Cache
 	db           *db.DB // nil when DATABASE_URL is not set
+	startTime    time.Time
+	version      string
 }
 
 // NewHandler creates a Handler with the given configuration and API client.
@@ -49,10 +51,12 @@ type Handler struct {
 // SessionTTL. Call SetTemplate to attach parsed HTML templates before serving.
 func NewHandler(cfg config.Config, client *anthropic.Client) *Handler {
 	return &Handler{
-		cfg:    cfg,
-		store:  session.NewStore(cfg.SessionTTL),
-		client: client,
-		cache:  analysis.NewCache(),
+		cfg:       cfg,
+		store:     session.NewStore(cfg.SessionTTL),
+		client:    client,
+		cache:     analysis.NewCache(),
+		startTime: time.Now(),
+		version:   "dev",
 	}
 }
 
@@ -82,6 +86,9 @@ func (h *Handler) SetBundlesTemplate(tmpl *template.Template) { h.bundlesTmpl = 
 
 // SetDB attaches a database connection to the handler. May be nil for in-memory-only mode.
 func (h *Handler) SetDB(d *db.DB) { h.db = d }
+
+// SetVersion stores the build version string for use in health checks.
+func (h *Handler) SetVersion(v string) { h.version = v }
 
 // HandleHome serves the role-appropriate dashboard for the logged-in user.
 func (h *Handler) HandleHome(w http.ResponseWriter, r *http.Request) {
@@ -275,11 +282,88 @@ func (h *Handler) HandleReport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleHealthz returns a simple health check response.
+// HandleHealthz returns a detailed JSON health check covering database
+// connectivity, schema completeness, and Anthropic API key presence.
+// HTTP 200 for "ok"/"degraded", 503 for "unhealthy".
 func (h *Handler) HandleHealthz(w http.ResponseWriter, r *http.Request) {
+	type checkResult struct {
+		Status    string `json:"status"`
+		Message   string `json:"message"`
+		LatencyMS *int64 `json:"latency_ms,omitempty"`
+	}
+	type healthResponse struct {
+		Status  string                 `json:"status"`
+		Version string                 `json:"version"`
+		Uptime  string                 `json:"uptime"`
+		Checks  map[string]checkResult `json:"checks"`
+	}
+
+	checks := make(map[string]checkResult)
+
+	// Anthropic API key
+	if h.cfg.AnthropicAPIKey != "" {
+		checks["anthropic"] = checkResult{Status: "ok", Message: "API key configured"}
+	} else {
+		checks["anthropic"] = checkResult{Status: "unconfigured", Message: "no API key — stub mode active"}
+	}
+
+	// Stub mode
+	checks["stub_mode"] = checkResult{Status: "ok", Message: fmt.Sprintf("%v", h.cfg.StubMode)}
+
+	// Database + schema
+	dbOK := false
+	schemaOK := false
+	if h.cfg.DatabaseURL == "" {
+		checks["database"] = checkResult{Status: "error", Message: "DATABASE_URL not configured"}
+		checks["schema"] = checkResult{Status: "error", Message: "DATABASE_URL not configured"}
+	} else if h.db == nil {
+		checks["database"] = checkResult{Status: "error", Message: "database connection unavailable"}
+		checks["schema"] = checkResult{Status: "error", Message: "database connection unavailable"}
+	} else {
+		res := h.db.HealthCheck(r.Context())
+		latency := res.DBLatencyMS
+		checks["database"] = checkResult{Status: res.DBStatus, Message: res.DBMessage, LatencyMS: &latency}
+		checks["schema"] = checkResult{Status: res.SchemaStatus, Message: res.SchemaMessage}
+		dbOK = res.DBStatus == "ok"
+		schemaOK = res.SchemaStatus == "ok"
+	}
+
+	// Overall status: unhealthy if any DB check failed (including unconfigured),
+	// degraded if DB is fine but Anthropic key is absent, ok otherwise.
+	overall := "ok"
+	httpStatus := http.StatusOK
+	if !dbOK || !schemaOK {
+		overall = "unhealthy"
+		httpStatus = http.StatusServiceUnavailable
+	} else if h.cfg.AnthropicAPIKey == "" {
+		overall = "degraded"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok","service":"autopsy"}`))
+	w.WriteHeader(httpStatus)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(healthResponse{
+		Status:  overall,
+		Version: h.version,
+		Uptime:  formatUptime(time.Since(h.startTime)),
+		Checks:  checks,
+	})
+}
+
+// formatUptime formats a duration as "2h34m", "5m12s", or "45s".
+func formatUptime(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%dm", h, m)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm%ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 // HandleDebugCache returns a JSON snapshot of the analysis cache.

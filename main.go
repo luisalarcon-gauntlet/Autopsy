@@ -15,6 +15,9 @@ import (
 	"github.com/yourusername/autopsy/internal/server"
 )
 
+// version is set at build time via -ldflags "-X main.version=<git-sha>".
+var version = "v1.0.0"
+
 func main() {
 	cfg := config.Load()
 	config.LogStartup(cfg)
@@ -43,6 +46,7 @@ func main() {
 	client := anthropic.NewClient()
 
 	h := server.NewHandler(cfg, &client)
+	h.SetVersion(version)
 	h.SetTemplate(uploadTmpl)
 	h.SetReportTemplate(reportTmpl)
 	h.SetLoginTemplate(loginTmpl)

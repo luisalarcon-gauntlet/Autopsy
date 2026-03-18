@@ -12,10 +12,11 @@ RUN go mod download
 # Copy source (templates are embedded at compile time via //go:embed)
 COPY . .
 
-# Build a fully static binary; CGO disabled for alpine compatibility
+# Build a fully static binary; CGO disabled for alpine compatibility.
+# Inject the short git SHA as the version string for the health endpoint.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build \
-    -ldflags="-s -w -extldflags '-static'" \
+    -ldflags="-s -w -X main.version=$(git rev-parse --short HEAD 2>/dev/null || echo dev) -extldflags '-static'" \
     -o autopsy \
     .
 
@@ -41,7 +42,7 @@ USER autopsy
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -qO- http://localhost:8080/healthz || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:8080/healthz | grep -q '"status":"ok"' || exit 1
 
 ENTRYPOINT ["./autopsy"]
