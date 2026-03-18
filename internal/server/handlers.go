@@ -13,11 +13,15 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/google/uuid"
 	"github.com/yourusername/autopsy/internal/analysis"
+	"github.com/yourusername/autopsy/internal/auth"
 	"github.com/yourusername/autopsy/internal/bundle"
 	"github.com/yourusername/autopsy/internal/config"
+	"github.com/yourusername/autopsy/internal/db"
 	"github.com/yourusername/autopsy/internal/session"
 )
 
@@ -27,12 +31,17 @@ const (
 
 // Handler holds shared dependencies for all HTTP handlers.
 type Handler struct {
-	cfg        config.Config
-	tmpl       *template.Template // upload page + partials
-	reportTmpl *template.Template // report page + partials
-	store      *session.Store
-	client     *anthropic.Client
-	cache      *analysis.Cache
+	cfg          config.Config
+	tmpl         *template.Template // upload page + partials
+	reportTmpl   *template.Template // report page + partials
+	loginTmpl    *template.Template // login page (standalone)
+	isvTmpl      *template.Template // ISV dashboard
+	platformTmpl *template.Template // platform dashboard
+	bundlesTmpl  *template.Template // bundle history page
+	store        *session.Store
+	client       *anthropic.Client
+	cache        *analysis.Cache
+	db           *db.DB // nil when DATABASE_URL is not set
 }
 
 // NewHandler creates a Handler with the given configuration and API client.
@@ -59,11 +68,60 @@ func (h *Handler) SetReportTemplate(tmpl *template.Template) {
 	h.reportTmpl = tmpl
 }
 
+// SetLoginTemplate attaches the login-page template to the handler.
+func (h *Handler) SetLoginTemplate(tmpl *template.Template) { h.loginTmpl = tmpl }
+
+// SetISVTemplate attaches the ISV dashboard template to the handler.
+func (h *Handler) SetISVTemplate(tmpl *template.Template) { h.isvTmpl = tmpl }
+
+// SetPlatformTemplate attaches the platform dashboard template to the handler.
+func (h *Handler) SetPlatformTemplate(tmpl *template.Template) { h.platformTmpl = tmpl }
+
+// SetBundlesTemplate attaches the bundle history page template to the handler.
+func (h *Handler) SetBundlesTemplate(tmpl *template.Template) { h.bundlesTmpl = tmpl }
+
+// SetDB attaches a database connection to the handler. May be nil for in-memory-only mode.
+func (h *Handler) SetDB(d *db.DB) { h.db = d }
+
+// HandleHome serves the role-appropriate dashboard for the logged-in user.
+func (h *Handler) HandleHome(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.FromContext(r.Context())
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	base := map[string]any{
+		"StubMode": h.cfg.StubMode,
+		"User":     user,
+	}
+	switch user.Role {
+	case auth.RoleISV:
+		base["Customers"] = auth.ISVCustomers[user.Username]
+		if err := h.isvTmpl.ExecuteTemplate(w, "dashboard_isv.html", base); err != nil {
+			slog.Error("template execution failed", "template", "dashboard_isv.html", "err", err)
+		}
+	case auth.RolePlatform:
+		base["Inbox"] = auth.PlatformInbox
+		base["Partners"] = auth.PlatformPartners
+		if err := h.platformTmpl.ExecuteTemplate(w, "dashboard_platform.html", base); err != nil {
+			slog.Error("template execution failed", "template", "dashboard_platform.html", "err", err)
+		}
+	default:
+		http.Redirect(w, r, "/upload", http.StatusSeeOther)
+	}
+}
+
 // HandleIndex serves the upload page.
 func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"StubMode":    h.cfg.StubMode,
 		"MaxBundleMB": h.cfg.MaxBundleMB,
+	}
+	if user, ok := auth.FromContext(r.Context()); ok {
+		data["User"] = user
+		if user.Role == auth.RoleISV {
+			data["Customers"] = auth.ISVCustomers[user.Username]
+		}
 	}
 	if err := h.tmpl.ExecuteTemplate(w, "upload.html", data); err != nil {
 		slog.Error("template execution failed", "template", "upload.html", "err", err)
@@ -119,6 +177,21 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	bundleSHA256 := hex.EncodeToString(sum[:])
 	slog.Info("bundle SHA256 computed", "sha256_prefix", bundleSHA256[:8])
 
+	// If a DB is connected, check whether this bundle was already analyzed.
+	// If so, restore (or reuse) the existing session and redirect immediately.
+	if h.db != nil {
+		user, _ := auth.FromContext(r.Context())
+		if existing, err := h.db.GetBundleBySHA256(r.Context(), bundleSHA256, user.Username); err == nil && existing != nil {
+			slog.Info("duplicate SHA256 — reusing existing bundle", "bundleID", existing.ID)
+			if _, ok := h.store.Get(existing.ID); !ok {
+				h.restoreSessionFromDB(r.Context(), existing, user.Username)
+			}
+			w.Header().Set("HX-Redirect", "/report/"+existing.ID)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
 	tmpDir, err := bundle.Extract(r.Context(), bytes.NewReader(fileBytes), bundle.MaxTotalSizeBytes)
 	if err != nil {
 		slog.Error("bundle extraction failed", "filename", name, "err", err)
@@ -140,22 +213,62 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	h.store.Set(sess.ID, sess)
 	slog.Info("session created", "sessionID", sess.ID, "sha256_prefix", bundleSHA256[:8])
 
+	// Persist bundle record to DB (non-fatal on error).
+	if h.db != nil {
+		user, _ := auth.FromContext(r.Context())
+		if err := h.db.InsertBundle(r.Context(), db.Bundle{
+			ID:            sess.ID,
+			OrgID:         user.Username,
+			CustomerName:  r.FormValue("customer"),
+			Filename:      name,
+			FileSizeBytes: int64(len(fileBytes)),
+			SHA256:        bundleSHA256,
+			UploadedBy:    user.Name,
+			FileData:      fileBytes,
+		}); err != nil {
+			slog.Error("failed to persist bundle to DB", "sessionID", sess.ID, "err", err)
+		}
+	}
+
 	w.Header().Set("HX-Redirect", "/report/"+sess.ID)
 	w.WriteHeader(http.StatusOK)
 }
 
 // HandleReport serves the analysis report page for a given session.
+// If the session is not in memory but a DB is connected, it reconstructs
+// the session from stored file_data so past reports survive server restarts.
 func (h *Handler) HandleReport(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("sessionID")
 	sess, ok := h.store.Get(sessionID)
+	if !ok && h.db != nil {
+		user, _ := auth.FromContext(r.Context())
+		if dbBundle, err := h.db.GetBundleByID(r.Context(), sessionID, user.Username); err == nil && dbBundle != nil {
+			sess = h.restoreSessionFromDB(r.Context(), dbBundle, user.Username)
+			ok = sess != nil
+		}
+	}
 	if !ok {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
+	// Pre-populate chat history from DB if not already in memory.
+	if h.db != nil && len(sess.ChatHistory) == 0 {
+		if msgs, err := h.db.GetChatMessagesByBundleID(r.Context(), sessionID); err == nil && len(msgs) > 0 {
+			for _, m := range msgs {
+				sess.ChatHistory = append(sess.ChatHistory, session.ChatMessage{Role: m.Role, Content: m.Content})
+			}
+			h.store.Set(sessionID, sess)
+		}
+	}
+
 	data := map[string]any{
-		"StubMode":  h.cfg.StubMode,
-		"SessionID": sess.ID,
+		"StubMode":    h.cfg.StubMode,
+		"SessionID":   sess.ID,
+		"ChatHistory": sess.ChatHistory,
+	}
+	if user, ok := auth.FromContext(r.Context()); ok {
+		data["User"] = user
 	}
 	if err := h.reportTmpl.ExecuteTemplate(w, "report.html", data); err != nil {
 		slog.Error("template execution failed", "template", "report.html", "err", err)
@@ -230,6 +343,13 @@ func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
 		h.upsertCache(sess.BundleSHA256, func(c *analysis.CachedResult) {
 			c.Triage = triageResult
 		})
+		if h.db != nil {
+			if raw, err := json.Marshal(triageResult); err == nil {
+				if err := h.db.SaveTriage(ctx, sessionID, triageResult.SeverityScore, triageResult.ClusterHealth, string(raw)); err != nil {
+					slog.Warn("failed to save triage to DB", "sessionID", sessionID, "err", err)
+				}
+			}
+		}
 	}
 
 	var buf bytes.Buffer
@@ -296,6 +416,13 @@ func (h *Handler) HandleTimelineSSE(w http.ResponseWriter, r *http.Request) {
 		h.upsertCache(sess.BundleSHA256, func(c *analysis.CachedResult) {
 			c.Timeline = timelineResult
 		})
+		if h.db != nil {
+			if raw, err := json.Marshal(timelineResult); err == nil {
+				if err := h.db.SaveTimeline(ctx, sessionID, string(raw)); err != nil {
+					slog.Warn("failed to save timeline to DB", "sessionID", sessionID, "err", err)
+				}
+			}
+		}
 	}
 
 	var buf bytes.Buffer
@@ -384,6 +511,11 @@ func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
 		h.upsertCache(sess.BundleSHA256, func(c *analysis.CachedResult) {
 			c.RCAText = res.text
 		})
+		if h.db != nil {
+			if err := h.db.SaveRCA(ctx, sessionID, res.text); err != nil {
+				slog.Warn("failed to save RCA to DB", "sessionID", sessionID, "err", err)
+			}
+		}
 	}
 
 	sse.SendEvent("done", "{}")
@@ -427,6 +559,11 @@ func (h *Handler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		analysis.ChatMessage{Role: "assistant", Content: response},
 	)
 	h.store.Set(sessionID, sess)
+
+	if h.db != nil {
+		h.db.InsertChatMessage(r.Context(), db.ChatMessage{ID: uuid.New().String(), BundleID: sessionID, Role: "user", Content: message})
+		h.db.InsertChatMessage(r.Context(), db.ChatMessage{ID: uuid.New().String(), BundleID: sessionID, Role: "assistant", Content: response})
+	}
 
 	type chatData struct {
 		UserMessage string
@@ -475,6 +612,9 @@ func (h *Handler) HandleChatSSE(w http.ResponseWriter, r *http.Request) {
 	// Persist user message immediately so it survives even if stream is interrupted.
 	sess.ChatHistory = append(sess.ChatHistory, analysis.ChatMessage{Role: "user", Content: message})
 	h.store.Set(sessionID, sess)
+	if h.db != nil {
+		h.db.InsertChatMessage(ctx, db.ChatMessage{ID: uuid.New().String(), BundleID: sessionID, Role: "user", Content: message})
+	}
 
 	data := bundleDataOrEmpty(sess)
 
@@ -511,6 +651,10 @@ func (h *Handler) HandleChatSSE(w http.ResponseWriter, r *http.Request) {
 				Role: "assistant", Content: res.text,
 			})
 			h.store.Set(sessionID, current)
+		}
+		if h.db != nil {
+			// User message was already persisted at stream start; save assistant turn.
+			h.db.InsertChatMessage(ctx, db.ChatMessage{ID: uuid.New().String(), BundleID: sessionID, Role: "assistant", Content: res.text})
 		}
 	}
 
@@ -578,6 +722,116 @@ func generateSuggestedQuestions(triage *analysis.TriageResult) []string {
 		questions = questions[:4]
 	}
 	return questions
+}
+
+// HandleBundles serves GET /bundles — the bundle history page for the current user's org.
+func (h *Handler) HandleBundles(w http.ResponseWriter, r *http.Request) {
+	data := map[string]any{"StubMode": h.cfg.StubMode}
+	if user, ok := auth.FromContext(r.Context()); ok {
+		data["User"] = user
+	}
+
+	if h.db == nil {
+		// No database — render empty state with informational message.
+		if err := h.bundlesTmpl.ExecuteTemplate(w, "bundles.html", data); err != nil {
+			slog.Error("template execution failed", "template", "bundles.html", "err", err)
+		}
+		return
+	}
+
+	user, ok := auth.FromContext(r.Context())
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	items, err := h.db.GetBundlesByOrg(r.Context(), user.Username)
+	if err != nil {
+		slog.Error("GetBundlesByOrg failed", "org", user.Username, "err", err)
+		items = nil
+	}
+	data["Bundles"] = items
+
+	if err := h.bundlesTmpl.ExecuteTemplate(w, "bundles.html", data); err != nil {
+		slog.Error("template execution failed", "template", "bundles.html", "err", err)
+	}
+}
+
+// HandleBundleDownload serves GET /bundles/{id}/download — streams the original bundle file.
+func (h *Handler) HandleBundleDownload(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		http.Error(w, "storage not configured", http.StatusServiceUnavailable)
+		return
+	}
+	bundleID := r.PathValue("id")
+	user, ok := auth.FromContext(r.Context())
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	b, err := h.db.GetBundleByID(r.Context(), bundleID, user.Username)
+	if err != nil {
+		slog.Error("download: db error", "bundleID", bundleID, "err", err)
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	if b == nil {
+		http.Error(w, "bundle not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, b.Filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(b.FileData)))
+	w.Write(b.FileData)
+}
+
+// restoreSessionFromDB reconstructs an in-memory session from a DB bundle record,
+// re-extracts the bundle, and loads cached analysis results.
+// Returns nil if extraction fails.
+func (h *Handler) restoreSessionFromDB(ctx context.Context, b *db.Bundle, orgID string) *session.Session {
+	tmpDir, err := bundle.Extract(ctx, bytes.NewReader(b.FileData), bundle.MaxTotalSizeBytes)
+	if err != nil {
+		slog.Warn("restoreSession: extraction failed", "bundleID", b.ID, "err", err)
+		return nil
+	}
+	bundleData, _ := bundle.Parse(ctx, tmpDir)
+
+	sess := &session.Session{
+		ID:           b.ID,
+		BundleDir:    tmpDir,
+		BundleSHA256: b.SHA256,
+		BundleData:   bundleData,
+		CreatedAt:    time.Now(),
+	}
+	h.store.Set(b.ID, sess)
+
+	// Load prior analysis results into the in-memory cache so SSE endpoints
+	// serve from cache immediately without re-calling Claude.
+	if dbAnalysis, err := h.db.GetAnalysisByBundleID(ctx, b.ID); err == nil && dbAnalysis != nil {
+		h.restoreAnalysisCache(b.SHA256, dbAnalysis)
+	}
+
+	slog.Info("session restored from DB", "bundleID", b.ID)
+	return sess
+}
+
+// restoreAnalysisCache loads persisted analysis JSON back into the in-memory cache.
+func (h *Handler) restoreAnalysisCache(sha256Hash string, a *db.Analysis) {
+	if a.TriageJSON != "" {
+		var triage analysis.TriageResult
+		if err := json.Unmarshal([]byte(a.TriageJSON), &triage); err == nil {
+			h.upsertCache(sha256Hash, func(c *analysis.CachedResult) { c.Triage = &triage })
+		}
+	}
+	if a.TimelineJSON != "" {
+		var timeline analysis.TimelineResult
+		if err := json.Unmarshal([]byte(a.TimelineJSON), &timeline); err == nil {
+			h.upsertCache(sha256Hash, func(c *analysis.CachedResult) { c.Timeline = &timeline })
+		}
+	}
+	if a.RCAMarkdown != "" {
+		h.upsertCache(sha256Hash, func(c *analysis.CachedResult) { c.RCAText = a.RCAMarkdown })
+	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"html/template"
 	"log"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/yourusername/autopsy/internal/config"
+	"github.com/yourusername/autopsy/internal/db"
 	"github.com/yourusername/autopsy/internal/server"
 )
 
@@ -17,13 +19,17 @@ func main() {
 	cfg := config.Load()
 	config.LogStartup(cfg)
 
-	// Parse separate template sets per page so {{define "content"}} blocks in
-	// upload.html and report.html don't collide in the same template namespace.
+	// Parse separate template sets per page so {{define "content"}} blocks
+	// in different pages don't collide in the same template namespace.
 	partials := "templates/partials/*.html"
 	layout := "templates/layout.html"
 
 	uploadTmpl := template.Must(template.ParseFS(templateFS, layout, partials, "templates/upload.html"))
 	reportTmpl := template.Must(template.ParseFS(templateFS, layout, partials, "templates/report.html"))
+	loginTmpl := template.Must(template.ParseFS(templateFS, "templates/login.html"))
+	isvTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/dashboard_isv.html"))
+	platformTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/dashboard_platform.html"))
+	bundlesTmpl := template.Must(template.ParseFS(templateFS, layout, "templates/bundles.html"))
 
 	for _, t := range uploadTmpl.Templates() {
 		log.Println("loaded upload template:", t.Name())
@@ -39,9 +45,33 @@ func main() {
 	h := server.NewHandler(cfg, &client)
 	h.SetTemplate(uploadTmpl)
 	h.SetReportTemplate(reportTmpl)
+	h.SetLoginTemplate(loginTmpl)
+	h.SetISVTemplate(isvTmpl)
+	h.SetPlatformTemplate(platformTmpl)
+	h.SetBundlesTemplate(bundlesTmpl)
+
+	// Connect to PostgreSQL if DATABASE_URL is set.
+	// Failure is non-fatal: app runs fully in-memory without a DB.
+	if cfg.DatabaseURL != "" {
+		dbConn, err := db.Open(cfg.DatabaseURL)
+		if err != nil {
+			slog.Warn("database connection failed — running without persistence", "err", err)
+		} else if err := dbConn.Migrate(context.Background()); err != nil {
+			slog.Warn("database migration failed — running without persistence", "err", err)
+			dbConn.Close()
+		} else {
+			h.SetDB(dbConn)
+			defer dbConn.Close()
+		}
+	} else {
+		slog.Warn("DATABASE_URL not set — running without persistence")
+	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", h.HandleIndex)   // exact root match
+	mux.HandleFunc("GET /login", h.HandleLoginPage)
+	mux.HandleFunc("POST /login", h.HandleLoginPost)
+	mux.HandleFunc("GET /logout", h.HandleLogout)
+	mux.HandleFunc("GET /{$}", h.HandleHome)     // role-specific dashboard
 	mux.HandleFunc("GET /upload", h.HandleIndex) // upload page
 	mux.HandleFunc("POST /upload", h.HandleUpload)
 	mux.HandleFunc("GET /report/{sessionID}", h.HandleReport)
@@ -57,11 +87,15 @@ func main() {
 	mux.HandleFunc("GET /chat/{sessionID}/stream", h.HandleChatSSE)
 	mux.HandleFunc("GET /suggestions/{sessionID}", h.HandleSuggestions)
 
+	// Bundle history and download
+	mux.HandleFunc("GET /bundles", h.HandleBundles)
+	mux.HandleFunc("GET /bundles/{id}/download", h.HandleBundleDownload)
+
 	// Debug (cache inspection — dev only)
 	mux.HandleFunc("GET /debug/cache", h.HandleDebugCache)
 
-	// Wrap mux with request logging and panic recovery.
-	handler := server.RequestLogger(server.PanicRecovery(mux))
+	// Wrap mux with auth, request logging, and panic recovery.
+	handler := server.RequestLogger(server.PanicRecovery(server.RequireAuth(mux)))
 
 	addr := ":" + cfg.Port
 	slog.Info("Autopsy listening", "addr", addr)

@@ -45,7 +45,18 @@
       Autopsy
     </a>
     <div class="flex items-center gap-3">
-      <a href="/" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">New Analysis</a>
+      <a href="/" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Home</a>
+      <a href="/upload" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">New Analysis</a>
+      <a href="/bundles" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Past Bundles</a>
+      {{if .User}}
+      <div class="flex items-center gap-2 border-l border-gray-200 dark:border-gray-700 pl-3">
+        <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold
+          {{if eq .User.Role "isv"}}bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300
+          {{else}}bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300{{end}}">{{.User.Initials}}</div>
+        <span class="text-sm text-gray-700 dark:text-gray-300 hidden sm:inline">{{.User.Name}}</span>
+        <a href="/logout" class="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign out</a>
+      </div>
+      {{end}}
       <button id="theme-toggle" onclick="toggleDark()"
               class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               aria-label="Toggle dark mode">

@@ -1,0 +1,61 @@
+{{template "layout.html" .}}
+
+{{define "title"}}Autopsy — {{.User.Org}} Dashboard{{end}}
+
+{{define "content"}}
+<div class="max-w-4xl mx-auto">
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Customer Health</h1>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{.User.Org}} — {{len .Customers}} customers monitored</p>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+    {{range .Customers}}
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col gap-3">
+      <div class="flex items-start justify-between">
+        <p class="font-semibold text-gray-900 dark:text-white">{{.Name}}</p>
+        {{if eq .Health "critical"}}
+        <span class="text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full">critical</span>
+        {{else if eq .Health "warning"}}
+        <span class="text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">warning</span>
+        {{else}}
+        <span class="text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full">healthy</span>
+        {{end}}
+      </div>
+      <div>
+        <div class="flex items-end gap-1 mb-1.5">
+          {{if eq .Health "critical"}}
+          <span class="text-3xl font-black text-red-600 dark:text-red-400">{{.SeverityScore}}</span>
+          {{else if eq .Health "warning"}}
+          <span class="text-3xl font-black text-amber-500 dark:text-amber-400">{{.SeverityScore}}</span>
+          {{else}}
+          <span class="text-3xl font-black text-green-600 dark:text-green-400">{{.SeverityScore}}</span>
+          {{end}}
+          <span class="text-sm text-gray-400 mb-0.5">/ 100</span>
+        </div>
+        <div class="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          {{if eq .Health "critical"}}
+          <div class="h-full bg-red-500 rounded-full" style="width: {{.SeverityScore}}%"></div>
+          {{else if eq .Health "warning"}}
+          <div class="h-full bg-amber-500 rounded-full" style="width: {{.SeverityScore}}%"></div>
+          {{else}}
+          <div class="h-full bg-green-500 rounded-full" style="width: {{.SeverityScore}}%"></div>
+          {{end}}
+        </div>
+      </div>
+      <a href="/upload" class="mt-auto text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">Analyze bundle →</a>
+    </div>
+    {{end}}
+  </div>
+
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex items-center justify-between">
+    <p class="text-sm text-gray-500 dark:text-gray-400">Upload a support bundle to get an AI-powered root cause analysis.</p>
+    <a href="/upload"
+       class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0 ml-4">
+      Upload Bundle
+    </a>
+  </div>
+
+</div>
+{{end}}

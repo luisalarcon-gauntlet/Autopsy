@@ -31,6 +31,10 @@ type Config struct {
 
 	// SessionTTL is how long sessions (and their temp dirs) are kept.
 	SessionTTL time.Duration
+
+	// DatabaseURL is the PostgreSQL connection string (e.g. from Railway's DATABASE_URL).
+	// Empty means no persistence — the app runs fully in-memory.
+	DatabaseURL string
 }
 
 // Load reads configuration from environment variables, applying defaults where
@@ -43,6 +47,7 @@ func Load() Config {
 		MaxBundleMB:     int64(getEnvInt("MAX_BUNDLE_MB", defaultMaxBundleMB)),
 		StubMode:        getEnvBool("STUB_MODE", false),
 		SessionTTL:      time.Duration(getEnvInt("SESSION_TTL_MINUTES", int(defaultSessionTTL.Minutes()))) * time.Minute,
+		DatabaseURL:     os.Getenv("DATABASE_URL"),
 	}
 
 	if cfg.AnthropicAPIKey == "" {
