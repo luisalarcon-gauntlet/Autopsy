@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{block "title" .}}Autopsy{{end}}</title>
+  <style>
+    /* Hide HTMX indicators until a request is in flight (prevents spinner showing on initial load) */
+    .htmx-indicator { opacity: 0; visibility: hidden; transition: opacity 200ms ease-in; }
+    .htmx-request .htmx-indicator,
+    .htmx-request.htmx-indicator { opacity: 1; visibility: visible; }
+  </style>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2.0.0" integrity="sha384-wS5l5IKJBvK6sPTKa2WZ1js3d947pvWXfw7x4icHPnD0XqaYmkPrdUx7jc4x130" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/htmx-ext-sse@2.2.1/sse.js"></script>
