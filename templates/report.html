@@ -5,10 +5,58 @@
 {{define "main_class"}}overflow-hidden{{end}}
 
 {{define "content"}}
+<style>
+@media (max-width: 768px) {
+  /* Sidebar becomes a fixed drawer */
+  #report-sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  #report-sidebar.sidebar-open { transform: translateX(0); }
+
+  /* Semi-transparent overlay behind open drawer */
+  #sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 99;
+  }
+  #sidebar-overlay.open { display: block; }
+
+  /* Show hamburger in header */
+  #report-hamburger { display: inline-flex !important; }
+
+  /* Header bar: tighter padding on mobile */
+  #report-header { padding-left: 1rem !important; padding-right: 1rem !important; padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+
+  /* Scrollable content: tighter padding */
+  #report-scroll { padding-left: 1rem !important; padding-right: 1rem !important; padding-top: 1rem !important; padding-bottom: 1rem !important; }
+
+  /* Buttons / links: min touch target */
+  #report-main button, #report-main a { min-height: 44px; }
+
+  /* Chat card: full height on mobile chat section */
+  #chat-card { min-height: 300px; }
+
+  /* Logs panel: stack container list and viewer vertically */
+  #section-logs .flex.gap-4 { flex-direction: column !important; height: auto !important; }
+  #section-logs .w-52 { width: 100% !important; flex-shrink: 0; }
+  #section-logs .w-52 nav { max-height: 160px; overflow-y: auto; }
+  #section-logs .flex-1.min-w-0.bg-gray-900 { min-height: 280px; border-radius: 0.75rem; }
+}
+@media (min-width: 769px) {
+  #report-hamburger { display: none !important; }
+}
+</style>
 <div class="flex h-full">
 
   {{/* ── SIDEBAR ─────────────────────────────────────────────────────── */}}
-  <aside class="w-56 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
+  <aside id="report-sidebar" class="w-56 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
 
     {{/* Logo + bundle meta */}}
     <div class="px-5 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800">
@@ -106,22 +154,32 @@
   </aside>
 
   {{/* ── MAIN AREA ───────────────────────────────────────────────────── */}}
-  <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+  <div id="report-main" class="flex-1 flex flex-col min-w-0 overflow-hidden">
 
     {{/* Header bar */}}
-    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 py-4 flex items-center justify-between flex-shrink-0">
-      <div>
-        <h1 id="page-title" class="text-base font-semibold text-gray-900 dark:text-white">Overview</h1>
-        <p id="page-subtitle" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" aria-live="polite">—</p>
+    <div id="report-header" class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 py-4 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-3 min-w-0">
+        <!-- Hamburger: mobile only, hidden on desktop via CSS -->
+        <button id="report-hamburger" onclick="toggleReportSidebar()"
+                class="flex-shrink-0 p-2 -ml-1 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Open navigation" aria-expanded="false">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+        <div class="min-w-0">
+          <h1 id="page-title" class="text-base font-semibold text-gray-900 dark:text-white">Overview</h1>
+          <p id="page-subtitle" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5" aria-live="polite">—</p>
+        </div>
       </div>
       <div id="severity-pill"
-           class="text-sm font-semibold px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 transition-colors">
+           class="flex-shrink-0 text-sm font-semibold px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 transition-colors">
         — / 100
       </div>
     </div>
 
     {{/* Scrollable content */}}
-    <div class="flex-1 overflow-y-auto px-8 py-6">
+    <div id="report-scroll" class="flex-1 overflow-y-auto px-8 py-6">
 
       {{/* ── OVERVIEW (default) ── */}}
       <div id="section-overview">
@@ -347,6 +405,9 @@
     </div>{{/* end scrollable content */}}
   </div>{{/* end main area */}}
 
+  {{/* Sidebar overlay (mobile only) */}}
+  <div id="sidebar-overlay" onclick="closeReportSidebar()" aria-hidden="true"></div>
+
 </div>{{/* end flex h-full */}}
 
 {{/* ── CHAT WIDGET ─────────────────────────────────────────────────────
@@ -403,6 +464,21 @@
 
 {{define "scripts"}}
 <script>
+// ── Mobile sidebar drawer ──────────────────────────────────────────────────
+function toggleReportSidebar() {
+  var sidebar = document.getElementById('report-sidebar');
+  var overlay = document.getElementById('sidebar-overlay');
+  var btn = document.getElementById('report-hamburger');
+  var isOpen = sidebar.classList.toggle('sidebar-open');
+  overlay.classList.toggle('open', isOpen);
+  btn.setAttribute('aria-expanded', isOpen);
+}
+function closeReportSidebar() {
+  document.getElementById('report-sidebar').classList.remove('sidebar-open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+  document.getElementById('report-hamburger').setAttribute('aria-expanded', false);
+}
+
 // ── Globals ────────────────────────────────────────────────────────────────
 var rcaBuffer = '';
 var chatStreaming = false;
@@ -432,6 +508,8 @@ var NAV_INACTIVE = ['border-transparent', 'text-gray-600', 'dark:text-gray-400']
 function showSection(name) {
   if (name === currentSection) return;
   currentSection = name;
+  // Close mobile sidebar when a section is selected
+  closeReportSidebar();
 
   // Toggle section visibility
   document.querySelectorAll('[id^="section-"]').forEach(function(el) {

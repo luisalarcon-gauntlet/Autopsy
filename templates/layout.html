@@ -20,6 +20,27 @@
     .htmx-indicator { opacity: 0; visibility: hidden; transition: opacity 200ms ease-in; }
     .htmx-request .htmx-indicator,
     .htmx-request.htmx-indicator { opacity: 1; visibility: visible; }
+
+    /* ── Mobile responsive (≤768px) ── */
+    @media (max-width: 768px) {
+      /* Hide desktop text nav links */
+      #nav-page-links { display: none; }
+      /* Show hamburger */
+      #nav-hamburger { display: inline-flex !important; }
+      /* Mobile nav dropdown (open state) */
+      #mobile-nav.open { display: block !important; }
+      /* Touch-friendly nav targets */
+      nav a, nav button { min-height: 44px; }
+      /* Minimum body text */
+      body { font-size: 14px; }
+      /* Reduce default main padding */
+      main.autopsy-page { padding-left: 1rem !important; padding-right: 1rem !important;
+                          padding-top: 1.25rem !important; padding-bottom: 1.25rem !important; }
+    }
+    @media (min-width: 769px) {
+      #nav-hamburger { display: none !important; }
+      #mobile-nav { display: none !important; }
+    }
   </style>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
@@ -46,9 +67,11 @@
       Autopsy
     </a>
     <div class="flex items-center gap-3">
-      <a href="/" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Home</a>
-      <a href="/upload" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">New Analysis</a>
-      <a href="/bundles" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Past Bundles</a>
+      <div id="nav-page-links" class="flex items-center gap-3">
+        <a href="/" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Home</a>
+        <a href="/upload" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">New Analysis</a>
+        <a href="/bundles" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Past Bundles</a>
+      </div>
       {{if .User}}
       <div class="flex items-center gap-2 border-l border-gray-200 dark:border-gray-700 pl-3">
         <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold
@@ -58,6 +81,17 @@
         <a href="/logout" class="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign out</a>
       </div>
       {{end}}
+      <!-- Hamburger (mobile only, hidden on desktop via CSS) -->
+      <button id="nav-hamburger" onclick="toggleMobileNav()"
+              class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              aria-label="Open menu" aria-expanded="false" aria-controls="mobile-nav">
+        <svg id="hamburger-icon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+        <svg id="hamburger-close" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
       <button id="theme-toggle" onclick="toggleDark()"
               class="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               aria-label="Toggle dark mode">
@@ -73,13 +107,36 @@
     </div>
   </nav>
 
-  <main class="flex-1 {{block "main_class" .}}max-w-7xl mx-auto px-6 py-8{{end}}">
+  <!-- Mobile nav dropdown (hidden on desktop via CSS, shown when .open) -->
+  <div id="mobile-nav" class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 hidden">
+    <div class="px-6 py-1 flex flex-col divide-y divide-gray-100 dark:divide-gray-700/60">
+      <a href="/" class="py-3 text-sm text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Home</a>
+      <a href="/upload" class="py-3 text-sm text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">New Analysis</a>
+      <a href="/bundles" class="py-3 text-sm text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Past Bundles</a>
+      {{if .User}}
+      <a href="/logout" class="py-3 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Sign out ({{.User.Name}})</a>
+      {{end}}
+    </div>
+  </div>
+
+  <main class="flex-1 {{block "main_class" .}}autopsy-page max-w-7xl mx-auto px-6 py-8{{end}}">
     {{block "content" .}}{{end}}
   </main>
 
   {{block "scripts" .}}{{end}}
 
   <script>
+  function toggleMobileNav() {
+    var nav = document.getElementById('mobile-nav');
+    var btn = document.getElementById('nav-hamburger');
+    var icon = document.getElementById('hamburger-icon');
+    var close = document.getElementById('hamburger-close');
+    var isOpen = nav.classList.toggle('open');
+    btn.setAttribute('aria-expanded', isOpen);
+    icon.classList.toggle('hidden', isOpen);
+    close.classList.toggle('hidden', !isOpen);
+  }
+
   function toggleDark() {
     var isDark = document.documentElement.classList.toggle('dark');
     localStorage.setItem('theme', isDark ? 'dark' : 'light');

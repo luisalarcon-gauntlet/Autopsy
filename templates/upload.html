@@ -3,6 +3,16 @@
 {{define "title"}}Autopsy — Analyze Support Bundle{{end}}
 
 {{define "content"}}
+<style>
+@media (max-width: 768px) {
+  /* Reduce drop zone padding */
+  #drop-zone { padding: 2.5rem 1rem !important; }
+  /* Full touch-height submit button */
+  #submit-btn { min-height: 48px; }
+  /* Readable heading */
+  .text-3xl { font-size: 1.5rem !important; }
+}
+</style>
 <div class="max-w-2xl mx-auto">
   <div class="text-center mb-8">
     <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Troubleshoot Support Bundle Analyzer</h1>

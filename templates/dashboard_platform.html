@@ -14,7 +14,7 @@
   </div>
 
   {{/* ── ISV tab filter bar ── */}}
-  <div class="flex items-center gap-2 mb-5 flex-wrap">
+  <div id="isv-tab-bar" class="flex items-center gap-2 mb-5 flex-wrap">
     <button
       onclick="filterISV('all', this)"
       class="isv-tab active-tab px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
@@ -36,8 +36,8 @@
   </div>
 
   {{/* ── Inbox table ── */}}
-  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-    <table class="w-full text-sm">
+  <div id="inbox-table-wrap" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <table id="inbox-table" class="w-full text-sm">
       <thead>
         <tr class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
           <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">ISV</th>
@@ -144,6 +144,65 @@
 </div>
 
 <style>
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  /* Tab bar: horizontal scroll instead of wrapping */
+  #isv-tab-bar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  #isv-tab-bar::-webkit-scrollbar { display: none; }
+  #isv-tab-bar .isv-tab { white-space: nowrap; flex-shrink: 0; min-height: 44px; }
+
+  /* Table → card list */
+  #inbox-table thead { display: none; }
+  #inbox-table tbody { display: block; }
+  #inbox-table tbody tr.inbox-row {
+    display: block;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    margin: 0.625rem;
+    padding: 0.75rem;
+    cursor: pointer;
+  }
+  .dark #inbox-table tbody tr.inbox-row { border-color: #374151; }
+  #inbox-table tbody tr.inbox-row td {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+    border: none;
+    font-size: 0.8125rem;
+  }
+  #inbox-table tbody tr.inbox-row td::before {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    min-width: 4.5rem;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  #inbox-table tbody tr.inbox-row td:nth-child(1)::before { content: "ISV"; }
+  #inbox-table tbody tr.inbox-row td:nth-child(2)::before { content: "Customer"; }
+  #inbox-table tbody tr.inbox-row td:nth-child(3)::before { content: "Severity"; }
+  #inbox-table tbody tr.inbox-row td:nth-child(4)::before { content: "Issue"; }
+  #inbox-table tbody tr.inbox-row td:nth-child(5)::before { content: "Status"; }
+  #inbox-table tbody tr.inbox-row td:nth-child(6)::before { content: "Age"; }
+  /* Top-issue cell: allow wrapping */
+  #inbox-table tbody tr.inbox-row td:nth-child(4) { flex-wrap: wrap; }
+  #inbox-table tbody tr.inbox-row td:nth-child(4) .truncate { white-space: normal; overflow: visible; text-overflow: unset; }
+  /* Empty state row */
+  #inbox-table tbody tr:not(.inbox-row) td { display: block; border: none; }
+  /* Outer container: no border-radius clip needed for cards */
+  #inbox-table-wrap { border-radius: 0; border-left: none; border-right: none; background: transparent; }
+  .dark #inbox-table-wrap { background: transparent; }
+}
+
 .isv-tab {
   background: transparent;
   color: #6b7280;

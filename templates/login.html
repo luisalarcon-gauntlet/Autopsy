@@ -42,6 +42,20 @@
       .panel-right {
         padding: 2rem 1rem;
       }
+      /* Stack all account card rows vertically, full width */
+      .panel-right > div > div[style*="display: flex"] {
+        flex-direction: column !important;
+      }
+      /* All login forms / cards fill full width */
+      .panel-right form {
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: none !important;
+      }
+      /* Comfortable touch targets on login buttons */
+      .panel-right button[type="submit"] {
+        min-height: 52px;
+      }
     }
   </style>
 </head>

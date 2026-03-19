@@ -5,9 +5,30 @@
 {{define "main_class"}}flex w-full p-0{{end}}
 
 {{define "content"}}
+<style>
+@media (max-width: 768px) {
+  /* Stack sidebar and main vertically */
+  main { flex-direction: column !important; }
+  #customer-sidebar {
+    width: 100% !important;
+    flex-shrink: unset !important;
+    border-right: none !important;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .dark #customer-sidebar { border-bottom-color: #374151 !important; }
+  /* Sidebar inner: reduce padding, lay out score+meta side-by-side */
+  #customer-sidebar > div { padding: 1.25rem 1rem !important; }
+  /* Score: smaller on mobile */
+  #customer-sidebar .text-7xl { font-size: 3.5rem !important; }
+  /* Upload button: full width touch target */
+  #customer-sidebar a[href="/upload"] { min-height: 44px; }
+  /* Main content: reduce padding */
+  #customer-main { padding: 1rem !important; }
+}
+</style>
 
 <!-- ── Left sidebar ─────────────────────────────────────────────── -->
-<aside class="w-64 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+<aside id="customer-sidebar" class="w-64 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
   <div class="flex flex-col flex-1 p-6">
 
     <!-- Breadcrumb -->
@@ -74,7 +95,7 @@
 </aside>
 
 <!-- ── Right main area ──────────────────────────────────────────── -->
-<div class="flex-1 min-w-0 bg-gray-50 dark:bg-gray-900 p-6 flex flex-col gap-5">
+<div id="customer-main" class="flex-1 min-w-0 bg-gray-50 dark:bg-gray-900 p-6 flex flex-col gap-5">
 
   <!-- Trend chart -->
   <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
