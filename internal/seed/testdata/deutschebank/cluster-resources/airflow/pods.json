@@ -1,0 +1,30 @@
+{"items":[
+  {
+    "metadata":{"name":"airflow-dag-processor-7e9c8b6d5-pv2zk","namespace":"airflow"},
+    "spec":{"nodeName":"deutschebank-node-1"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"airflow-dag-processor",
+        "ready":false,
+        "restartCount":8,
+        "state":{"waiting":{"reason":"CrashLoopBackOff","message":"back-off 5m0s restarting failed container"}},
+        "lastState":{"terminated":{"reason":"OOMKilled","exitCode":137,"message":"OOM killed"}}
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"airflow-scheduler-5b8d7f9c4-tz3xw","namespace":"airflow"},
+    "spec":{"nodeName":"deutschebank-node-2"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"airflow-scheduler",
+        "ready":true,
+        "restartCount":0,
+        "state":{"running":{"startedAt":"2024-01-13T06:00:00Z"}},
+        "lastState":{}
+      }]
+    }
+  }
+]}

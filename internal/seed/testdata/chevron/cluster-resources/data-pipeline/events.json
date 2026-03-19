@@ -1,0 +1,22 @@
+{"items":[
+  {
+    "metadata":{"name":"pipeline-worker-pull-fail.1c2d3e","namespace":"data-pipeline"},
+    "involvedObject":{"kind":"Pod","name":"pipeline-worker-8d7f6c9b4-xm3pq","namespace":"data-pipeline"},
+    "reason":"Failed",
+    "message":"Failed to pull image \"registry.chevron.internal/data-pipeline/worker:v2.4.1\": rpc error: code = Unknown desc = context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+    "type":"Warning",
+    "count":7,
+    "firstTimestamp":"2024-01-14T10:00:00Z",
+    "lastTimestamp":"2024-01-14T12:45:00Z"
+  },
+  {
+    "metadata":{"name":"pipeline-worker-backoff.1c2d3f","namespace":"data-pipeline"},
+    "involvedObject":{"kind":"Pod","name":"pipeline-worker-8d7f6c9b4-xm3pq","namespace":"data-pipeline"},
+    "reason":"BackOff",
+    "message":"Back-off pulling image \"registry.chevron.internal/data-pipeline/worker:v2.4.1\"",
+    "type":"Warning",
+    "count":12,
+    "firstTimestamp":"2024-01-14T10:05:00Z",
+    "lastTimestamp":"2024-01-14T12:50:00Z"
+  }
+]}

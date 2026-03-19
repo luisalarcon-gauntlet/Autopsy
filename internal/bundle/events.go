@@ -2,7 +2,6 @@ package bundle
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,8 +62,8 @@ func parseEventsFile(path string) ([]ClusterEvent, error) {
 		return nil, fmt.Errorf("parseEventsFile: read: %w", err)
 	}
 
-	var items []k8sEvent
-	if err := json.Unmarshal(raw, &items); err != nil {
+	items, err := unmarshalList[k8sEvent](raw)
+	if err != nil {
 		return nil, fmt.Errorf("parseEventsFile: unmarshal: %w", err)
 	}
 

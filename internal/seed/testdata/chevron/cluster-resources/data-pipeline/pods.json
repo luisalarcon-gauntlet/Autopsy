@@ -1,0 +1,30 @@
+{"items":[
+  {
+    "metadata":{"name":"pipeline-worker-8d7f6c9b4-xm3pq","namespace":"data-pipeline"},
+    "spec":{"nodeName":"chevron-node-1"},
+    "status":{
+      "phase":"Pending",
+      "containerStatuses":[{
+        "name":"pipeline-worker",
+        "ready":false,
+        "restartCount":0,
+        "state":{"waiting":{"reason":"ImagePullBackOff","message":"Back-off pulling image \"registry.chevron.internal/data-pipeline/worker:v2.4.1\": context deadline exceeded"}},
+        "lastState":{}
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"pipeline-coordinator-5b9d8c7a3-km2nv","namespace":"data-pipeline"},
+    "spec":{"nodeName":"chevron-node-1"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"pipeline-coordinator",
+        "ready":true,
+        "restartCount":0,
+        "state":{"running":{"startedAt":"2024-01-14T09:30:00Z"}},
+        "lastState":{}
+      }]
+    }
+  }
+]}

@@ -1,0 +1,12 @@
+{"items":[
+  {
+    "metadata":{"name":"scheduler-cpu-throttle.2a3b4c","namespace":"airflow"},
+    "involvedObject":{"kind":"Pod","name":"airflow-scheduler-6c9d8f7b3-mn4qr","namespace":"airflow"},
+    "reason":"CPUThrottling",
+    "message":"Container airflow-scheduler in pod airflow-scheduler-6c9d8f7b3-mn4qr is being CPU-throttled. Sustained usage at 95% of the 2000m limit. Scheduler heartbeat lag has increased to 8s (baseline: 2s). DAG parse cycles are delayed.",
+    "type":"Warning",
+    "count":23,
+    "firstTimestamp":"2024-01-12T14:00:00Z",
+    "lastTimestamp":"2024-01-13T06:45:00Z"
+  }
+]}

@@ -573,7 +573,7 @@ function onTimelineComplete() {
     streamEl.textContent = rcaBuffer;
   });
 
-  src.addEventListener('done', function() {
+  src.addEventListener('close', function() {
     src.close();
     dotEl.className = 'w-2 h-2 rounded-full bg-green-400';
     labelEl.textContent = 'Phase 3 · complete';
@@ -803,7 +803,7 @@ function sendChatMessage(msg) {
     if (bubble) { bubble.textContent = 'Error: ' + e.data; bubble.classList.add('text-red-600'); }
   });
 
-  src.addEventListener('done', function() {
+  src.addEventListener('close', function() {
     src.close();
     chatStreaming = false;
     var bubble = document.getElementById('chat-asst-bubble');

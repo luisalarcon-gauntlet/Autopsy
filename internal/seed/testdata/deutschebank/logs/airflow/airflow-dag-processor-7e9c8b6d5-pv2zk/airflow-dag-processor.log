@@ -1,0 +1,13 @@
+2024-01-15T14:20:00Z INFO  Starting Airflow DAG processor v2.8.1
+2024-01-15T14:20:01Z INFO  Loading configuration from /opt/airflow/airflow.cfg
+2024-01-15T14:20:02Z INFO  Scanning DAG directory: /opt/airflow/dags
+2024-01-15T14:20:03Z INFO  Found 312 DAG files to process
+2024-01-15T14:20:10Z INFO  Parsing DAGs... (1/312)
+2024-01-15T14:20:25Z INFO  Parsing DAGs... (78/312)
+2024-01-15T14:20:40Z INFO  Parsing DAGs... (156/312)
+2024-01-15T14:20:45Z WARN  Memory usage rising: 1.4Gi / 2.0Gi limit (70%)
+2024-01-15T14:20:50Z INFO  Parsing DAGs... (201/312)
+2024-01-15T14:20:55Z WARN  Memory usage: 1.8Gi / 2.0Gi limit (90%) — approaching OOM threshold
+2024-01-15T14:20:58Z WARN  Memory usage: 1.95Gi / 2.0Gi limit (97%) — critical
+2024-01-15T14:21:00Z ERROR Fatal: process received SIGKILL from OOM reaper (used 2.1Gi, limit 2.0Gi)
+Killed

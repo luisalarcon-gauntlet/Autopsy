@@ -1,0 +1,30 @@
+{"items":[
+  {
+    "metadata":{"name":"airflow-scheduler-6c9d8f7b3-mn4qr","namespace":"airflow"},
+    "spec":{"nodeName":"barclays-node-1"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"airflow-scheduler",
+        "ready":true,
+        "restartCount":0,
+        "state":{"running":{"startedAt":"2024-01-12T08:00:00Z"}},
+        "lastState":{}
+      }]
+    }
+  },
+  {
+    "metadata":{"name":"airflow-webserver-4d6e5b7c3-k8pwz","namespace":"airflow"},
+    "spec":{"nodeName":"barclays-node-2"},
+    "status":{
+      "phase":"Running",
+      "containerStatuses":[{
+        "name":"airflow-webserver",
+        "ready":true,
+        "restartCount":0,
+        "state":{"running":{"startedAt":"2024-01-12T08:00:00Z"}},
+        "lastState":{}
+      }]
+    }
+  }
+]}

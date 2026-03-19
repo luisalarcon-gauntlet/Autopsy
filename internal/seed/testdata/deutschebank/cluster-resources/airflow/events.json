@@ -1,0 +1,22 @@
+{"items":[
+  {
+    "metadata":{"name":"dag-processor-oom.3b4c5d","namespace":"airflow"},
+    "involvedObject":{"kind":"Pod","name":"airflow-dag-processor-7e9c8b6d5-pv2zk","namespace":"airflow"},
+    "reason":"OOMKilling",
+    "message":"Memory limit of container airflow-dag-processor in pod airflow-dag-processor-7e9c8b6d5-pv2zk exceeded. Container was using 2.1Gi against a limit of 2Gi.",
+    "type":"Warning",
+    "count":8,
+    "firstTimestamp":"2024-01-13T08:00:00Z",
+    "lastTimestamp":"2024-01-15T14:30:00Z"
+  },
+  {
+    "metadata":{"name":"dag-processor-backoff.3b4c5e","namespace":"airflow"},
+    "involvedObject":{"kind":"Pod","name":"airflow-dag-processor-7e9c8b6d5-pv2zk","namespace":"airflow"},
+    "reason":"BackOff",
+    "message":"Back-off restarting failed container airflow-dag-processor in pod airflow-dag-processor-7e9c8b6d5-pv2zk",
+    "type":"Warning",
+    "count":8,
+    "firstTimestamp":"2024-01-13T08:05:00Z",
+    "lastTimestamp":"2024-01-15T14:35:00Z"
+  }
+]}

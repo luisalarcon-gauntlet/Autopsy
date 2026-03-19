@@ -5,6 +5,7 @@ package seed
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,8 +16,19 @@ import (
 	"github.com/yourusername/autopsy/internal/db"
 )
 
+//go:embed testdata/chevron-bundle.tar.gz
+var chevronBundle []byte
+
+//go:embed testdata/barclays-bundle.tar.gz
+var barclaysBundle []byte
+
+//go:embed testdata/deutschebank-bundle.tar.gz
+var deutschebankBundle []byte
+
 type seedEntry struct {
 	id            string
+	orgID         string // defaults to "airbyte" if empty
+	bundleBytes   []byte // actual .tar.gz bytes; nil means FileData: []byte{}
 	customerName  string
 	filename      string
 	uploadedAt    time.Time
@@ -381,6 +393,200 @@ No patches required — cluster is healthy.
 - Plan for capacity review at ~60% memory utilization to maintain comfortable headroom as connectors grow`),
 	},
 
+	// ── Astronomer / Chevron — ImagePullBackOff warning ─────────────────────
+	{
+		id:            "seed-chevron-001",
+		orgID:         "astronomer",
+		bundleBytes:   chevronBundle,
+		customerName:  "Chevron",
+		filename:      "chevron-cluster-2024-01-14.tar.gz",
+		uploadedAt:    date("2024-01-14"),
+		severity:      61,
+		clusterHealth: "warning",
+		topIssue:      "ImagePullBackOff: registry timeout on scheduler pod",
+		timelineJSON: `{"events":[` +
+			`{"relativeTime":"T+0:00","title":"Cluster started — scheduler pending","detail":"airflow-scheduler pod stuck in Pending/ImagePullBackOff. All other Airflow components (webserver, triggerer) running normally.","severity":"warning","linkedPod":"airflow-scheduler-7d8f9c4b2-xk5pw"},` +
+			`{"relativeTime":"T+8:00","title":"ImagePullBackOff: registry.example.com timeout","detail":"kubelet unable to pull quay.io/astronomer/ap-airflow:2.8.1 — connection timed out after 30s. Private registry unreachable from cluster network.","severity":"critical","linkedPod":"airflow-scheduler-7d8f9c4b2-xk5pw"},` +
+			`{"relativeTime":"T+20:00","title":"Back-off escalating — 5m retry interval","detail":"Image pull back-off reached maximum interval. Scheduler has been unavailable for 20 minutes. DAG runs not being triggered.","severity":"critical","linkedPod":"airflow-scheduler-7d8f9c4b2-xk5pw"},` +
+			`{"relativeTime":"T+35:00","title":"Other pods healthy — isolated to registry connectivity","detail":"Webserver, triggerer, and worker pods all running. No node-level network issues detected. Problem isolated to outbound registry access.","severity":"info","linkedPod":""}` +
+			`]}`,
+		rcaMarkdown: backticks(`## TL;DR
+**Cluster health:** Warning — Airflow scheduler in ImagePullBackOff, DAG triggering paused
+**Critical pods:** 1 failing (airflow-scheduler), 11 healthy
+**Root cause confidence:** High
+**Estimated fix time:** 15 minutes
+
+## Root Cause
+The airflow-scheduler pod cannot pull its container image from the Astronomer registry (~~quay.io/astronomer/ap-airflow:2.8.1~~) due to a network connectivity timeout. The cluster nodes cannot reach the container registry on port 443 — likely a firewall rule change or DNS resolution failure in the cluster's private network. The image was previously pulled successfully, suggesting this is an infrastructure change rather than a misconfigured image reference.
+
+## Evidence
+- ~~airflow-scheduler-7d8f9c4b2-xk5pw~~: ImagePullBackOff, back-off at 5m maximum
+- Kubelet error: ~~failed to pull image "quay.io/astronomer/ap-airflow:2.8.1": context deadline exceeded~~
+- All other Airflow pods running and healthy — issue is not cluster-wide
+- No node MemoryPressure or DiskPressure conditions
+- 0 DAG runs triggered since scheduler went down
+
+## Fix Steps
+1. Verify registry connectivity from a node:
+~~~bash
+kubectl run nettest --image=busybox --restart=Never -- wget -O- https://quay.io/v2/ --timeout=10
+kubectl logs nettest
+kubectl delete pod nettest
+~~~
+2. If unreachable, check and restore the egress firewall rule for quay.io (port 443)
+3. As an immediate workaround, pre-pull the image and push to an internal registry:
+~~~bash
+docker pull quay.io/astronomer/ap-airflow:2.8.1
+docker tag quay.io/astronomer/ap-airflow:2.8.1 registry.internal/astronomer/ap-airflow:2.8.1
+docker push registry.internal/astronomer/ap-airflow:2.8.1
+~~~
+4. Update the scheduler deployment to use the internal registry mirror
+
+## Patch Files
+~~~yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: astronomer
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+      - name: registry-credentials
+      containers:
+      - name: scheduler
+        image: registry.internal/astronomer/ap-airflow:2.8.1
+~~~
+
+## Prevention
+- Configure a pull-through registry mirror inside the cluster network to eliminate external registry dependency
+- Add a synthetic monitor that pulls a test image every 5 minutes and alerts if it fails
+- Pin egress firewall rules for registry endpoints in infrastructure-as-code (Terraform/Pulumi) to prevent accidental removal`),
+	},
+
+	// ── Astronomer / Barclays — healthy ──────────────────────────────────────
+	{
+		id:            "seed-barclays-001",
+		orgID:         "astronomer",
+		bundleBytes:   barclaysBundle,
+		customerName:  "Barclays",
+		filename:      "barclays-cluster-2024-01-13.tar.gz",
+		uploadedAt:    date("2024-01-13"),
+		severity:      28,
+		clusterHealth: "healthy",
+		topIssue:      "Minor scheduler lag — within normal range",
+		timelineJSON: `{"events":[` +
+			`{"relativeTime":"T+0:00","title":"Cluster healthy — all components running","detail":"3/3 nodes Ready. 14 pods running across astronomer and airflow namespaces. Scheduler, webserver, and triggerer all healthy.","severity":"info","linkedPod":""},` +
+			`{"relativeTime":"T+12:00","title":"Scheduler heartbeat lag briefly elevated","detail":"Airflow scheduler heartbeat lag reached 8 seconds (normal: <5s) during a large DAG parse cycle. Resolved within 2 minutes as parse completed.","severity":"warning","linkedPod":"airflow-scheduler-6c9d8f7b3-mn4qr"},` +
+			`{"relativeTime":"T+25:00","title":"All DAG runs completing on schedule","detail":"Lag returned to 2-3s baseline. All configured DAGs triggering and completing within SLA. No failed tasks.","severity":"info","linkedPod":""}` +
+			`]}`,
+		rcaMarkdown: backticks(`## TL;DR
+**Cluster health:** Healthy — transient scheduler lag, no failures
+**Critical pods:** 0 failing, 14 healthy
+**Root cause confidence:** High
+**Estimated fix time:** 0 minutes — no action required
+
+## Root Cause
+The Airflow scheduler experienced a brief heartbeat lag spike (8s) during a large DAG parse cycle. This is expected behavior when the DAG folder contains many files — the scheduler pauses heartbeat updates while parsing. No DAG runs were missed and no tasks failed.
+
+## Evidence
+- ~~airflow-scheduler-6c9d8f7b3-mn4qr~~: heartbeat lag 8s peak, duration 2 minutes
+- All DAG runs completed within SLA — 0 failed tasks
+- Lag returned to 2-3s baseline after parse cycle completed
+- 0 pod restarts, 0 Warning events from Kubernetes
+
+## Fix Steps
+No immediate action required. To prevent future lag spikes, consider optimizing the DAG folder:
+
+~~~bash
+# Check DAG count and parse time
+kubectl exec -n astronomer airflow-scheduler-6c9d8f7b3-mn4qr -- airflow dags list | wc -l
+kubectl exec -n astronomer airflow-scheduler-6c9d8f7b3-mn4qr -- airflow dags report
+~~~
+
+## Patch Files
+No patches required — cluster is healthy.
+
+## Prevention
+- Set ~~min_file_process_interval~~ in Airflow config to reduce parse frequency for stable DAGs
+- Archive or remove unused DAG files to keep parse time low
+- Monitor scheduler heartbeat lag and alert if it exceeds 15s consistently`),
+	},
+
+	// ── Astronomer / Deutsche Bank — critical ─────────────────────────────────
+	{
+		id:            "seed-deutschebank-001",
+		orgID:         "astronomer",
+		bundleBytes:   deutschebankBundle,
+		customerName:  "Deutsche Bank",
+		filename:      "deutschebank-cluster-2024-01-15.tar.gz",
+		uploadedAt:    date("2024-01-15"),
+		severity:      72,
+		clusterHealth: "critical",
+		topIssue:      "Airflow metadata DB connection pool exhausted — tasks queued",
+		timelineJSON: `{"events":[` +
+			`{"relativeTime":"T+0:00","title":"Cluster operational — elevated task queue depth","detail":"All pods running. Task queue depth at 340 (normal: <50). Scheduler processing tasks but at reduced throughput — DB connection wait times elevated.","severity":"warning","linkedPod":""},` +
+			`{"relativeTime":"T+14:00","title":"Metadata DB connection pool exhausted","detail":"airflow-scheduler and airflow-webserver both reporting 'QueuePool limit overflow' — all 20 SQLAlchemy pool connections in use. New task state updates being dropped.","severity":"critical","linkedPod":"airflow-scheduler-5e7c9b8d4-pv2zk"},` +
+			`{"relativeTime":"T+22:00","title":"Task state updates failing — zombie tasks accumulating","detail":"Tasks completing in workers but state not being written to DB. Airflow UI showing tasks as 'running' when they have finished. Queue depth now 890.","severity":"critical","linkedPod":"airflow-worker-6f8d7c9b4-tz3xw"},` +
+			`{"relativeTime":"T+38:00","title":"Webserver returning 500s on task log requests","detail":"airflow-webserver unable to query task history from metadata DB. All /api/v1/dags/*/dagRuns endpoints returning HTTP 500.","severity":"critical","linkedPod":"airflow-webserver-4c6e8b7d3-qm9vy"},` +
+			`{"relativeTime":"T+52:00","title":"Scheduler restarted — pool partially recovered","detail":"Operator restarted the scheduler pod. Connection pool flushed. Task state updates resuming but backlog of zombie tasks requires manual cleanup.","severity":"warning","linkedPod":"airflow-scheduler-5e7c9b8d4-pv2zk"}` +
+			`]}`,
+		rcaMarkdown: backticks(`## TL;DR
+**Cluster health:** Critical — Airflow metadata DB connection pool exhausted, task state updates dropping
+**Critical pods:** 2 degraded (scheduler, webserver), 12 healthy
+**Root cause confidence:** High
+**Estimated fix time:** 45 minutes
+
+## Root Cause
+A surge in concurrent DAG runs (340+ tasks queued) overwhelmed the SQLAlchemy connection pool (~~pool_size=20~~) shared between the scheduler and webserver. With all connections occupied, task state updates could not be written to the PostgreSQL metadata database, causing tasks to appear stuck in the UI while actually completing in workers. The underlying trigger was a batch of 47 DAGs triggering simultaneously at the top of the hour.
+
+## Evidence
+- SQLAlchemy error: ~~QueuePool limit of size 20 overflow 10 reached, connection timed out~~
+- Task queue depth peaked at 890 (normal: <50)
+- ~~airflow-webserver~~: HTTP 500 on all ~~dagRuns~~ endpoints — DB unavailable
+- Zombie tasks: completed in worker but state shows "running" in UI
+- PostgreSQL max_connections: 100 — pool exhaustion is on the Airflow side, not the DB
+
+## Fix Steps
+1. Increase the SQLAlchemy connection pool size in Airflow config:
+~~~bash
+kubectl -n astronomer edit configmap airflow-config
+# Set: sql_alchemy_pool_size = 10  (per component)
+# Set: sql_alchemy_max_overflow = 20
+# Set: sql_alchemy_pool_timeout = 30
+kubectl -n astronomer rollout restart deployment/airflow-scheduler deployment/airflow-webserver
+~~~
+2. Clean up zombie tasks:
+~~~bash
+kubectl exec -n astronomer airflow-scheduler-5e7c9b8d4-pv2zk -- \
+  airflow tasks clear -d 2024-01-15 --yes
+~~~
+3. Deploy PgBouncer between Airflow and PostgreSQL to multiplex connections
+
+## Patch Files
+~~~yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+  namespace: astronomer
+data:
+  AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "10"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "20"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_TIMEOUT: "30"
+  AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE: "1800"
+  AIRFLOW__SCHEDULER__MAX_DAGRUNS_TO_CREATE_PER_LOOP: "10"
+  AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
+~~~
+
+## Prevention
+- Deploy PgBouncer in transaction-pooling mode — Airflow makes many short-lived DB transactions that pool well
+- Set ~~max_dagruns_to_create_per_loop~~ to throttle scheduler burst behavior
+- Alert when SQLAlchemy pool wait time exceeds 5 seconds (available via StatsD metrics)
+- Stagger DAG schedules to avoid all-at-top-of-hour triggers`),
+	},
+
 	// ── Goldman Sachs — improving trend ────────────────────────────────────
 	{
 		id:            "seed-goldman-001",
@@ -611,6 +817,11 @@ func Run(ctx context.Context, d *db.DB) {
 }
 
 func seedOne(ctx context.Context, d *db.DB, e seedEntry) error {
+	orgID := e.orgID
+	if orgID == "" {
+		orgID = "airbyte"
+	}
+
 	// Build triage JSON.
 	topIssues := []map[string]any{}
 	if e.topIssue != "" {
@@ -626,7 +837,7 @@ func seedOne(ctx context.Context, d *db.DB, e seedEntry) error {
 		"clusterHealth":      e.clusterHealth,
 		"summary":            fmt.Sprintf("Cluster health: %s. Severity score: %d.", e.clusterHealth, e.severity),
 		"topIssues":          topIssues,
-		"affectedNamespaces": []string{"airbyte"},
+		"affectedNamespaces": []string{orgID},
 	})
 	if err != nil {
 		return fmt.Errorf("marshal triage: %w", err)
@@ -636,16 +847,21 @@ func seedOne(ctx context.Context, d *db.DB, e seedEntry) error {
 	sum := sha256.Sum256([]byte(e.id))
 	sha256hex := hex.EncodeToString(sum[:])
 
+	fileData := e.bundleBytes
+	if fileData == nil {
+		fileData = []byte{}
+	}
+
 	// Bundle insert is idempotent (ON CONFLICT DO NOTHING).
 	if err := d.InsertBundleWithTime(ctx, db.Bundle{
 		ID:            e.id,
-		OrgID:         "airbyte",
+		OrgID:         orgID,
 		CustomerName:  e.customerName,
 		Filename:      e.filename,
-		FileSizeBytes: 0,
+		FileSizeBytes: int64(len(fileData)),
 		SHA256:        sha256hex,
 		UploadedBy:    "seed",
-		FileData:      []byte{},
+		FileData:      fileData,
 		UploadedAt:    e.uploadedAt,
 	}); err != nil {
 		return fmt.Errorf("insert bundle: %w", err)

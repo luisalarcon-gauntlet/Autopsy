@@ -16,6 +16,7 @@ type User struct {
 	Username string
 	Name     string
 	Org      string
+	OrgID    string // lowercase org identifier used as DB org_id (e.g. "astronomer")
 	Role     string
 	Initials string
 }
@@ -49,6 +50,7 @@ var Users = map[string]User{
 		Username: "airbyte",
 		Name:     "Sarah Chen",
 		Org:      "Airbyte",
+		OrgID:    "airbyte",
 		Role:     RoleISV,
 		Initials: "SC",
 	},
@@ -56,8 +58,17 @@ var Users = map[string]User{
 		Username: "replicated",
 		Name:     "Marcus Johnson",
 		Org:      "Replicated",
+		OrgID:    "replicated",
 		Role:     RolePlatform,
 		Initials: "MJ",
+	},
+	"alex": {
+		Username: "alex",
+		Name:     "Alex Rivera",
+		Org:      "Astronomer",
+		OrgID:    "astronomer",
+		Role:     RoleISV,
+		Initials: "AR",
 	},
 }
 
@@ -67,6 +78,11 @@ var ISVCustomers = map[string][]Customer{
 		{Name: "Toyota", SeverityScore: 85, Health: "critical"},
 		{Name: "Nike", SeverityScore: 12, Health: "healthy"},
 		{Name: "Goldman Sachs", SeverityScore: 44, Health: "warning"},
+	},
+	"alex": {
+		{Name: "Chevron", SeverityScore: 61, Health: "warning"},
+		{Name: "Barclays", SeverityScore: 28, Health: "healthy"},
+		{Name: "Deutsche Bank", SeverityScore: 72, Health: "critical"},
 	},
 }
 

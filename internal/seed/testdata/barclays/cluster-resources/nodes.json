@@ -1,0 +1,4 @@
+{"items":[
+  {"metadata":{"name":"barclays-node-1","namespace":""},"status":{"conditions":[{"type":"Ready","status":"True","reason":"KubeletReady","message":"kubelet is posting ready status"},{"type":"MemoryPressure","status":"False","reason":"KubeletHasSufficientMemory"},{"type":"DiskPressure","status":"False","reason":"KubeletHasNoDiskPressure"}],"capacity":{"cpu":"8","memory":"16384Mi","pods":"110"}}},
+  {"metadata":{"name":"barclays-node-2","namespace":""},"status":{"conditions":[{"type":"Ready","status":"True","reason":"KubeletReady","message":"kubelet is posting ready status"},{"type":"MemoryPressure","status":"False","reason":"KubeletHasSufficientMemory"},{"type":"DiskPressure","status":"False","reason":"KubeletHasNoDiskPressure"}],"capacity":{"cpu":"8","memory":"16384Mi","pods":"110"}}}
+]}

@@ -180,6 +180,24 @@ func parseClusterVersion(bundleDir string, data *BundleData) {
 	}
 }
 
+// unmarshalList decodes a JSON value that is either a raw array ([...]) or a
+// Kubernetes List wrapper ({"items":[...]}), returning the slice of items.
+// It tries the List wrapper first; if that yields no items it falls back to
+// a raw array so that both bundle formats are supported transparently.
+func unmarshalList[T any](raw []byte) ([]T, error) {
+	var wrapper struct {
+		Items []T `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err == nil && len(wrapper.Items) > 0 {
+		return wrapper.Items, nil
+	}
+	var items []T
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 // parseNodes reads cluster-resources/nodes.json and populates NodeSummaries.
 func parseNodes(bundleDir string, data *BundleData) {
 	nodesPath := filepath.Join(bundleDir, "cluster-resources", "nodes.json")
@@ -189,8 +207,8 @@ func parseNodes(bundleDir string, data *BundleData) {
 		return
 	}
 
-	var items []k8sNode
-	if err := json.Unmarshal(raw, &items); err != nil {
+	items, err := unmarshalList[k8sNode](raw)
+	if err != nil {
 		data.ParseErrors = append(data.ParseErrors, fmt.Sprintf("nodes.json parse: %v", err))
 		return
 	}
@@ -249,8 +267,8 @@ func parsePodsFile(path string, data *BundleData) {
 		return // Missing pods.json in a namespace dir is non-fatal; skip silently.
 	}
 
-	var pods []k8sPod
-	if err := json.Unmarshal(raw, &pods); err != nil {
+	pods, err := unmarshalList[k8sPod](raw)
+	if err != nil {
 		data.ParseErrors = append(data.ParseErrors, fmt.Sprintf("%s: unmarshal: %v", path, err))
 		return
 	}

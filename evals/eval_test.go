@@ -375,11 +375,10 @@ func TestEval_RCA_ToyotaBundle_MentionsAllBrokenPods(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	text := sb.String()
 
 	for _, pod := range toyotaBrokenPods {
 		if !strings.Contains(text, pod) {
@@ -393,11 +392,11 @@ func TestEval_RCA_ToyotaBundle_HasRootCauseSection(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	if !strings.Contains(sb.String(), "## Root Cause") {
+	if !strings.Contains(text, "## Root Cause") {
 		t.Errorf("RCA output missing section %q", "## Root Cause")
 	}
 }
@@ -407,11 +406,11 @@ func TestEval_RCA_ToyotaBundle_HasEvidenceSection(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	if !strings.Contains(sb.String(), "## Evidence") {
+	if !strings.Contains(text, "## Evidence") {
 		t.Errorf("RCA output missing section %q", "## Evidence")
 	}
 }
@@ -421,11 +420,11 @@ func TestEval_RCA_ToyotaBundle_HasFixStepsSection(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	if !strings.Contains(sb.String(), "## Fix Steps") {
+	if !strings.Contains(text, "## Fix Steps") {
 		t.Errorf("RCA output missing section %q", "## Fix Steps")
 	}
 }
@@ -435,11 +434,11 @@ func TestEval_RCA_ToyotaBundle_HasPatchFilesSection(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	if !strings.Contains(sb.String(), "## Patch Files") {
+	if !strings.Contains(text, "## Patch Files") {
 		t.Errorf("RCA output missing section %q", "## Patch Files")
 	}
 }
@@ -449,11 +448,10 @@ func TestEval_RCA_ToyotaBundle_PatchFilesAreValidYAML(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	text := sb.String()
 
 	patchSection := extractSection(text, "## Patch Files")
 	if patchSection == "" {
@@ -479,11 +477,11 @@ func TestEval_RCA_ToyotaBundle_MentionsCorrectNamespace(t *testing.T) {
 	client := newClient(t)
 	data := loadToyotaBundle(t)
 
-	var sb strings.Builder
-	if err := analysis.RunRCA(context.Background(), client, data, false, &sb); err != nil {
-		t.Fatalf("RunRCA: %v", err)
+	text, err := analysis.RunRCASync(context.Background(), client, data, false)
+	if err != nil {
+		t.Fatalf("RunRCASync: %v", err)
 	}
-	if !strings.Contains(sb.String(), "broken-app") {
+	if !strings.Contains(text, "broken-app") {
 		t.Errorf("RCA output does not mention namespace %q", "broken-app")
 	}
 }

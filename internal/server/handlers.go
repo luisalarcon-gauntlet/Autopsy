@@ -107,13 +107,53 @@ func (h *Handler) HandleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	switch user.Role {
 	case auth.RoleISV:
-		base["Customers"] = auth.ISVCustomers[user.Username]
+		customers := auth.ISVCustomers[user.Username]
+		if h.db != nil {
+			if summaries, err := h.db.GetCustomerSummaries(r.Context(), user.OrgID); err == nil && len(summaries) > 0 {
+				customers = make([]auth.Customer, 0, len(summaries))
+				for _, s := range summaries {
+					health := s.ClusterHealth
+					if health == "" {
+						switch {
+						case s.SeverityScore >= 70:
+							health = "critical"
+						case s.SeverityScore >= 40:
+							health = "warning"
+						case s.SeverityScore > 0:
+							health = "healthy"
+						}
+					}
+					customers = append(customers, auth.Customer{
+						Name:          s.CustomerName,
+						SeverityScore: s.SeverityScore,
+						Health:        health,
+					})
+				}
+			}
+		}
+		base["Customers"] = customers
 		if err := h.isvTmpl.ExecuteTemplate(w, "dashboard_isv.html", base); err != nil {
 			slog.Error("template execution failed", "template", "dashboard_isv.html", "err", err)
 		}
 	case auth.RolePlatform:
-		base["Inbox"] = auth.PlatformInbox
-		base["Partners"] = auth.PlatformPartners
+		var inbox []db.InboxItem
+		var tabs []db.ISVTab
+		totalOpen := 0
+		if h.db != nil {
+			var err error
+			if inbox, err = h.db.GetPlatformInbox(r.Context()); err != nil {
+				slog.Error("platform inbox query failed", "err", err)
+			}
+			if tabs, err = h.db.GetPlatformISVTabs(r.Context()); err != nil {
+				slog.Error("platform tabs query failed", "err", err)
+			}
+			for _, t := range tabs {
+				totalOpen += t.OpenCount
+			}
+		}
+		base["Inbox"] = inbox
+		base["Tabs"] = tabs
+		base["TotalOpen"] = totalOpen
 		if err := h.platformTmpl.ExecuteTemplate(w, "dashboard_platform.html", base); err != nil {
 			slog.Error("template execution failed", "template", "dashboard_platform.html", "err", err)
 		}
@@ -135,7 +175,7 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 			// Populate customer name list from DB if available; fall back to hardcoded.
 			var customerNames []string
 			if h.db != nil {
-				customerNames, _ = h.db.GetDistinctCustomers(r.Context(), user.Username)
+				customerNames, _ = h.db.GetDistinctCustomers(r.Context(), user.OrgID)
 			}
 			if len(customerNames) == 0 {
 				for _, c := range auth.ISVCustomers[user.Username] {
@@ -203,10 +243,10 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	// If so, restore (or reuse) the existing session and redirect immediately.
 	if h.db != nil {
 		user, _ := auth.FromContext(r.Context())
-		if existing, err := h.db.GetBundleBySHA256(r.Context(), bundleSHA256, user.Username); err == nil && existing != nil {
+		if existing, err := h.db.GetBundleBySHA256(r.Context(), bundleSHA256, user.OrgID); err == nil && existing != nil {
 			slog.Info("duplicate SHA256 — reusing existing bundle", "bundleID", existing.ID)
 			if _, ok := h.store.Get(existing.ID); !ok {
-				h.restoreSessionFromDB(r.Context(), existing, user.Username)
+				h.restoreSessionFromDB(r.Context(), existing, user.OrgID)
 			}
 			w.Header().Set("HX-Redirect", "/report/"+existing.ID)
 			w.WriteHeader(http.StatusOK)
@@ -246,7 +286,7 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		user, _ := auth.FromContext(r.Context())
 		if err := h.db.InsertBundle(r.Context(), db.Bundle{
 			ID:            sess.ID,
-			OrgID:         user.Username,
+			OrgID:         user.OrgID,
 			CustomerName:  customerName,
 			Filename:      name,
 			FileSizeBytes: int64(len(fileBytes)),
@@ -275,9 +315,16 @@ func (h *Handler) HandleReport(w http.ResponseWriter, r *http.Request) {
 	sess, ok := h.store.Get(sessionID)
 	if !ok && h.db != nil {
 		user, _ := auth.FromContext(r.Context())
-		if dbBundle, err := h.db.GetBundleByID(r.Context(), sessionID, user.Username); err == nil && dbBundle != nil {
-			sess = h.restoreSessionFromDB(r.Context(), dbBundle, user.Username)
+		if dbBundle, err := h.db.GetBundleByID(r.Context(), sessionID, user.OrgID); err == nil && dbBundle != nil {
+			sess = h.restoreSessionFromDB(r.Context(), dbBundle, user.OrgID)
 			ok = sess != nil
+		}
+		// Platform users can view bundles belonging to any ISV org.
+		if !ok && user.Role == auth.RolePlatform {
+			if dbBundle, err := h.db.GetBundleByIDGlobal(r.Context(), sessionID); err == nil && dbBundle != nil {
+				sess = h.restoreSessionFromDB(r.Context(), dbBundle, dbBundle.OrgID)
+				ok = sess != nil
+			}
 		}
 	}
 	if !ok {
@@ -449,7 +496,7 @@ func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			slog.Error("triage analysis failed", "err", runErr)
 			sendErrorPartial(sse, "triage-update", "Analysis unavailable — "+runErr.Error())
-			sse.SendEvent("done", "{}")
+			sse.SendEvent("close", "{}")
 			return
 		}
 		triageResult = result
@@ -480,7 +527,7 @@ func (h *Handler) HandleTriageSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sse.SendEvent("done", "{}")
+	sse.SendEvent("close", "{}")
 }
 
 // HandleTimelineSSE streams Phase 2 (timeline) analysis results via SSE.
@@ -522,7 +569,7 @@ func (h *Handler) HandleTimelineSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			slog.Error("timeline analysis failed", "err", runErr)
 			sendErrorPartial(sse, "timeline-update", "Analysis unavailable — "+runErr.Error())
-			sse.SendEvent("done", "{}")
+			sse.SendEvent("close", "{}")
 			return
 		}
 		timelineResult = result
@@ -549,7 +596,7 @@ func (h *Handler) HandleTimelineSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sse.SendEvent("done", "{}")
+	sse.SendEvent("close", "{}")
 }
 
 // HandleRCASSE streams Phase 3 (RCA) analysis results via SSE.
@@ -584,7 +631,7 @@ func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("RCA cache replay interrupted", "err", err)
 			return
 		}
-		sse.SendEvent("done", "{}")
+		sse.SendEvent("close", "{}")
 		return
 	}
 
@@ -617,7 +664,7 @@ func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
 		if res.err != nil {
 			slog.Error("RCA analysis failed", "err", res.err)
 			sse.SendEvent("rca-error", template.HTMLEscapeString(res.err.Error()))
-			sse.SendEvent("done", "{}")
+			sse.SendEvent("close", "{}")
 			return
 		}
 		// Store completed RCA text in cache.
@@ -631,7 +678,7 @@ func (h *Handler) HandleRCASSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sse.SendEvent("done", "{}")
+	sse.SendEvent("close", "{}")
 }
 
 // HandleChat processes a synchronous chat message and returns rendered message bubbles.
@@ -755,7 +802,7 @@ func (h *Handler) HandleChatSSE(w http.ResponseWriter, r *http.Request) {
 		if res.err != nil {
 			slog.Error("chat stream failed", "sessionID", sessionID, "err", res.err)
 			sse.SendEvent("chat-error", template.HTMLEscapeString(res.err.Error()))
-			sse.SendEvent("done", "{}")
+			sse.SendEvent("close", "{}")
 			return
 		}
 		// Save assistant response to session history.
@@ -771,7 +818,7 @@ func (h *Handler) HandleChatSSE(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sse.SendEvent("done", "{}")
+	sse.SendEvent("close", "{}")
 }
 
 // HandleSuggestions returns rendered suggested starter question pills for the
@@ -854,7 +901,7 @@ func (h *Handler) HandleCustomerDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bundles, err := h.db.GetBundlesByCustomer(r.Context(), user.Username, slug)
+	bundles, err := h.db.GetBundlesByCustomer(r.Context(), user.OrgID, slug)
 	if err != nil {
 		slog.Error("GetBundlesByCustomer failed", "slug", slug, "err", err)
 		http.Error(w, "Failed to load customer data", http.StatusInternalServerError)
@@ -895,17 +942,18 @@ func (h *Handler) HandleCustomerDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"StubMode":       h.cfg.StubMode,
-		"User":           user,
-		"CustomerName":   customerName,
-		"Bundles":        bundles,
-		"TotalBundles":   n,
-		"LatestSeverity": latestSeverity,
-		"LatestHealth":   latestHealth,
-		"ChartLabels":    template.JS(labelsJSON),
-		"ChartScores":    template.JS(scoresJSON),
-		"HasBundles":     n > 0,
-		"SingleBundle":   n == 1,
+		"StubMode":          h.cfg.StubMode,
+		"User":              user,
+		"CustomerName":      customerName,
+		"Bundles":           bundles,
+		"TotalBundles":      n,
+		"LatestSeverity":    latestSeverity,
+		"LatestHealth":      latestHealth,
+		"LatestHasAnalysis": bundles[0].HasAnalysis,
+		"ChartLabels":       template.JS(labelsJSON),
+		"ChartScores":       template.JS(scoresJSON),
+		"HasBundles":        n > 0,
+		"SingleBundle":      n == 1,
 	}
 
 	if err := h.customerTmpl.ExecuteTemplate(w, "customer_detail.html", data); err != nil {
@@ -934,9 +982,9 @@ func (h *Handler) HandleBundles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.db.GetBundlesByOrg(r.Context(), user.Username)
+	items, err := h.db.GetBundlesByOrg(r.Context(), user.OrgID)
 	if err != nil {
-		slog.Error("GetBundlesByOrg failed", "org", user.Username, "err", err)
+		slog.Error("GetBundlesByOrg failed", "org", user.OrgID, "err", err)
 		items = nil
 	}
 	data["Bundles"] = items
@@ -944,6 +992,71 @@ func (h *Handler) HandleBundles(w http.ResponseWriter, r *http.Request) {
 	if err := h.bundlesTmpl.ExecuteTemplate(w, "bundles.html", data); err != nil {
 		slog.Error("template execution failed", "template", "bundles.html", "err", err)
 	}
+}
+
+// HandleBundleDetail serves GET /bundles/{id} — redirects to the report page.
+// For platform users this ensures the session is restored cross-org before redirect.
+func (h *Handler) HandleBundleDetail(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/report/"+r.PathValue("id"), http.StatusFound)
+}
+
+// HandleBundleStatus serves PATCH /bundles/{id}/status — cycles the bundle workflow
+// status (new → in_review → resolved → new) and returns the updated status pill HTML
+// for HTMX to swap in-place. Only accessible to platform users.
+func (h *Handler) HandleBundleStatus(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		http.Error(w, "storage not configured", http.StatusServiceUnavailable)
+		return
+	}
+	user, ok := auth.FromContext(r.Context())
+	if !ok || user.Role != auth.RolePlatform {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	bundleID := r.PathValue("id")
+	current, err := h.db.GetBundleStatus(r.Context(), bundleID)
+	if err != nil || current == "" {
+		http.Error(w, "bundle not found", http.StatusNotFound)
+		return
+	}
+
+	next := map[string]string{
+		"new":       "in_review",
+		"in_review": "resolved",
+		"resolved":  "new",
+	}[current]
+	if next == "" {
+		next = "new"
+	}
+
+	if err := h.db.SetBundleStatus(r.Context(), bundleID, next); err != nil {
+		slog.Error("set bundle status failed", "bundleID", bundleID, "err", err)
+		http.Error(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, statusPillHTML(bundleID, next))
+}
+
+// statusPillHTML returns the HTML for a clickable status pill for HTMX swapping.
+func statusPillHTML(bundleID, status string) string {
+	cls := map[string]string{
+		"new":       "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
+		"in_review": "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+		"resolved":  "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-500 dark:border-gray-700",
+	}[status]
+	label := map[string]string{
+		"new": "New", "in_review": "In Review", "resolved": "Resolved",
+	}[status]
+	return fmt.Sprintf(
+		`<button hx-patch="/bundles/%s/status" hx-target="this" hx-swap="outerHTML" `+
+			`onclick="event.stopPropagation()" `+
+			`class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border `+
+			`cursor-pointer hover:opacity-75 transition-opacity %s">%s</button>`,
+		bundleID, cls, label,
+	)
 }
 
 // HandleBundleDownload serves GET /bundles/{id}/download — streams the original bundle file.
@@ -958,7 +1071,7 @@ func (h *Handler) HandleBundleDownload(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	b, err := h.db.GetBundleByID(r.Context(), bundleID, user.Username)
+	b, err := h.db.GetBundleByID(r.Context(), bundleID, user.OrgID)
 	if err != nil {
 		slog.Error("download: db error", "bundleID", bundleID, "err", err)
 		http.Error(w, "storage error", http.StatusInternalServerError)

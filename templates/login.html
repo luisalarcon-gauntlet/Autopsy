@@ -4,67 +4,173 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Autopsy — Sign In</title>
-  <script>
-    (function() {
-      var stored = localStorage.getItem('theme');
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (stored === 'dark' || (!stored && prefersDark)) {
-        document.documentElement.classList.add('dark');
-      }
-    })();
-  </script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config = { darkMode: 'class' }</script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    .panel-left {
+      background-color: #0a0c10;
+      width: 40%;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2.5rem;
+      position: relative;
+    }
+    .panel-right {
+      width: 60%;
+      min-height: 100vh;
+      background-color: #f9fafb;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2.5rem;
+    }
+    @media (max-width: 767px) {
+      body > .split-layout {
+        flex-direction: column !important;
+      }
+      .panel-left, .panel-right {
+        width: 100% !important;
+        min-height: auto;
+      }
+      .panel-left {
+        padding: 2.5rem 1.5rem;
+      }
+      .panel-right {
+        padding: 2rem 1rem;
+      }
+    }
+  </style>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 min-h-screen flex flex-col items-center justify-center">
+<body style="display:flex; flex-direction:row; min-height:100vh; font-family: ui-sans-serif, system-ui, sans-serif;">
 
-  <div class="mb-8 text-center">
-    <div class="flex items-center justify-center gap-2 mb-2">
-      <svg class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-      </svg>
-      <span class="text-2xl font-bold text-gray-900 dark:text-white">Autopsy</span>
-    </div>
-    <p class="text-gray-500 dark:text-gray-400 text-sm">Support Bundle Analyzer</p>
-  </div>
+  <div class="split-layout" style="display:flex; flex-direction:row; width:100%; min-height:100vh; flex-wrap:wrap;">
 
-  <div class="w-full max-w-2xl px-4">
-    <h1 class="text-center text-lg font-semibold text-gray-900 dark:text-white mb-5">Choose your account</h1>
-    <div class="grid grid-cols-2 gap-4">
+    <!-- LEFT PANEL -->
+    <div class="panel-left">
+      <div style="max-width: 320px; width: 100%; text-align: center;">
 
-      <form method="post" action="/login">
-        <input type="hidden" name="username" value="airbyte" />
-        <button type="submit"
-                class="w-full text-left bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl p-6 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all group cursor-pointer">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold text-sm flex-shrink-0">SC</div>
-            <div>
-              <p class="font-semibold text-gray-900 dark:text-white text-sm">Sarah Chen</p>
-              <p class="text-xs text-blue-600 dark:text-blue-400 font-medium">Airbyte Support</p>
-            </div>
+        <!-- Logo -->
+        <div style="margin-bottom: 1.5rem; display: flex; justify-content: center;">
+          <div style="width: 56px; height: 56px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); border-radius: 14px; display: flex; align-items: center; justify-content: center;">
+            <svg style="width:28px; height:28px; color:#60a5fa;" fill="none" viewBox="0 0 24 24" stroke="#60a5fa" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
           </div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Upload and analyze support bundles for your customers.</p>
-          <p class="mt-4 text-sm font-medium text-blue-600 dark:text-blue-400 group-hover:underline">Sign in →</p>
-        </button>
-      </form>
+        </div>
 
-      <form method="post" action="/login">
-        <input type="hidden" name="username" value="replicated" />
-        <button type="submit"
-                class="w-full text-left bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl p-6 hover:border-red-400 dark:hover:border-red-500 hover:shadow-md transition-all group cursor-pointer">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-red-700 dark:text-red-300 font-semibold text-sm flex-shrink-0">MJ</div>
-            <div>
-              <p class="font-semibold text-gray-900 dark:text-white text-sm">Marcus Johnson</p>
-              <p class="text-xs text-red-600 dark:text-red-400 font-medium">Replicated Support</p>
-            </div>
-          </div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Monitor ISV partners and triage incoming support bundles.</p>
-          <p class="mt-4 text-sm font-medium text-red-600 dark:text-red-400 group-hover:underline">Sign in →</p>
-        </button>
-      </form>
+        <!-- Heading -->
+        <h1 style="font-size: 2rem; font-weight: 700; color: #ffffff; margin: 0 0 0.5rem 0; letter-spacing: -0.02em;">Autopsy</h1>
 
+        <!-- Subheading -->
+        <p style="font-size: 0.9rem; color: #94a3b8; margin: 0 0 2rem 0; line-height: 1.5;">
+          AI-powered analysis for Troubleshoot support bundles
+        </p>
+
+        <!-- Divider -->
+        <div style="width: 40px; height: 2px; background: rgba(59,130,246,0.4); margin: 0 auto 2rem auto; border-radius: 2px;"></div>
+
+        <!-- Bullet points -->
+        <ul style="list-style: none; padding: 0; margin: 0 0 2.5rem 0; text-align: left; display: flex; flex-direction: column; gap: 0.875rem;">
+          <li style="display: flex; align-items: flex-start; gap: 0.75rem; color: #cbd5e1; font-size: 0.875rem; line-height: 1.4;">
+            <span style="color: #60a5fa; margin-top: 1px; flex-shrink: 0;">·</span>
+            Instant triage and severity scoring
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: 0.75rem; color: #cbd5e1; font-size: 0.875rem; line-height: 1.4;">
+            <span style="color: #60a5fa; margin-top: 1px; flex-shrink: 0;">·</span>
+            Root cause analysis with remediation steps
+          </li>
+          <li style="display: flex; align-items: flex-start; gap: 0.75rem; color: #cbd5e1; font-size: 0.875rem; line-height: 1.4;">
+            <span style="color: #60a5fa; margin-top: 1px; flex-shrink: 0;">·</span>
+            Multi-ISV support bundle management
+          </li>
+        </ul>
+
+        <!-- Footer -->
+        <p style="font-size: 0.75rem; color: #475569; margin: 0;">A Replicated tool</p>
+      </div>
     </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="panel-right">
+      <div style="max-width: 520px; width: 100%;">
+
+        <!-- Heading -->
+        <h2 style="font-size: 1.5rem; font-weight: 700; color: #111827; margin: 0 0 0.375rem 0;">Choose your account</h2>
+        <p style="font-size: 0.875rem; color: #6b7280; margin: 0 0 2rem 0;">Select a demo persona to continue</p>
+
+        <!-- ROW 1: ISV Partners -->
+        <p style="font-size: 0.7rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 0.625rem 0;">ISV Partners</p>
+        <div style="display: flex; gap: 0.875rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+
+          <!-- Sarah Chen / Airbyte -->
+          <form method="post" action="/login" style="flex: 1; min-width: 180px;">
+            <input type="hidden" name="username" value="airbyte" />
+            <button type="submit" style="width:100%; text-align:left; background:#ffffff; border: 2px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; cursor:pointer; transition: border-color 0.15s, box-shadow 0.15s;"
+              onmouseover="this.style.borderColor='#3b82f6'; this.style.boxShadow='0 4px 12px rgba(59,130,246,0.12)';"
+              onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none';">
+              <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+                <div style="width:40px; height:40px; border-radius:50%; background:#dbeafe; display:flex; align-items:center; justify-content:center; color:#1d4ed8; font-weight:600; font-size:0.8rem; flex-shrink:0;">SC</div>
+                <div>
+                  <p style="font-weight:600; color:#111827; font-size:0.875rem; margin:0 0 1px 0;">Sarah Chen</p>
+                  <p style="font-size:0.75rem; color:#2563eb; font-weight:500; margin:0;">Airbyte Support</p>
+                </div>
+              </div>
+              <p style="font-size:0.8rem; color:#6b7280; margin:0 0 0.875rem 0; line-height:1.45;">Upload and analyze support bundles for your customers.</p>
+              <p style="font-size:0.8rem; font-weight:500; color:#2563eb; margin:0;">Sign in →</p>
+            </button>
+          </form>
+
+          <!-- Alex Rivera / Astronomer -->
+          <form method="post" action="/login" style="flex: 1; min-width: 180px;">
+            <input type="hidden" name="username" value="alex" />
+            <button type="submit" style="width:100%; text-align:left; background:#ffffff; border: 2px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; cursor:pointer; transition: border-color 0.15s, box-shadow 0.15s;"
+              onmouseover="this.style.borderColor='#a855f7'; this.style.boxShadow='0 4px 12px rgba(168,85,247,0.12)';"
+              onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none';">
+              <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+                <div style="width:40px; height:40px; border-radius:50%; background:#f3e8ff; display:flex; align-items:center; justify-content:center; color:#7e22ce; font-weight:600; font-size:0.8rem; flex-shrink:0;">AR</div>
+                <div>
+                  <p style="font-weight:600; color:#111827; font-size:0.875rem; margin:0 0 1px 0;">Alex Rivera</p>
+                  <p style="font-size:0.75rem; color:#9333ea; font-weight:500; margin:0;">Astronomer Support</p>
+                </div>
+              </div>
+              <p style="font-size:0.8rem; color:#6b7280; margin:0 0 0.875rem 0; line-height:1.45;">Upload and analyze support bundles for your customers.</p>
+              <p style="font-size:0.8rem; font-weight:500; color:#9333ea; margin:0;">Sign in →</p>
+            </button>
+          </form>
+
+        </div>
+
+        <!-- ROW 2: Replicated -->
+        <p style="font-size: 0.7rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 0.625rem 0;">Replicated</p>
+        <div style="display: flex; gap: 0.875rem;">
+
+          <!-- Marcus Johnson / Replicated -->
+          <form method="post" action="/login" style="flex: 1; max-width: calc(50% - 0.4375rem);">
+            <input type="hidden" name="username" value="replicated" />
+            <button type="submit" style="width:100%; text-align:left; background:#ffffff; border: 2px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; cursor:pointer; transition: border-color 0.15s, box-shadow 0.15s;"
+              onmouseover="this.style.borderColor='#ef4444'; this.style.boxShadow='0 4px 12px rgba(239,68,68,0.12)';"
+              onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none';">
+              <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem;">
+                <div style="width:40px; height:40px; border-radius:50%; background:#fee2e2; display:flex; align-items:center; justify-content:center; color:#b91c1c; font-weight:600; font-size:0.8rem; flex-shrink:0;">MJ</div>
+                <div>
+                  <p style="font-weight:600; color:#111827; font-size:0.875rem; margin:0 0 1px 0;">Marcus Johnson</p>
+                  <p style="font-size:0.75rem; color:#dc2626; font-weight:500; margin:0;">Replicated Support</p>
+                </div>
+              </div>
+              <p style="font-size:0.8rem; color:#6b7280; margin:0 0 0.875rem 0; line-height:1.45;">Monitor ISV partners and triage incoming support bundles.</p>
+              <p style="font-size:0.8rem; font-weight:500; color:#dc2626; margin:0;">Sign in →</p>
+            </button>
+          </form>
+
+        </div>
+
+      </div>
+    </div>
+
   </div>
 
 </body>

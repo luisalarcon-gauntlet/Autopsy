@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS bundles (
     uploaded_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE bundles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'new';
+
 CREATE TABLE IF NOT EXISTS analyses (
     id TEXT PRIMARY KEY,
     bundle_id TEXT REFERENCES bundles(id),

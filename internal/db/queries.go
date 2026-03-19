@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -66,6 +67,55 @@ type ChatMessage struct {
 	Role      string
 	Content   string
 	CreatedAt time.Time
+}
+
+// InboxItem is a bundle row for the platform inbox, joined with analysis data.
+type InboxItem struct {
+	ID           string
+	OrgID        string // ISV identifier, e.g. "airbyte"
+	CustomerName string
+	SeverityScore int
+	HasAnalysis  bool
+	TopIssue     string
+	Status       string // "new" | "in_review" | "resolved"
+	UploadedAt   time.Time
+}
+
+// ISVDisplay returns a display-friendly version of the org ID ("airbyte" → "Airbyte").
+func (i InboxItem) ISVDisplay() string {
+	if i.OrgID == "" {
+		return "Unknown"
+	}
+	return strings.ToUpper(i.OrgID[:1]) + i.OrgID[1:]
+}
+
+// IsNew reports whether the bundle was uploaded in the last 2 hours.
+func (i InboxItem) IsNew() bool {
+	return time.Since(i.UploadedAt) < 2*time.Hour
+}
+
+// Age returns a human-readable time-since string, e.g. "5m ago", "3h ago", "Jan 2, 2024".
+func (i InboxItem) Age() string {
+	d := time.Since(i.UploadedAt)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return i.UploadedAt.Format("Jan 2, 2006")
+	}
+}
+
+// ISVTab is one entry in the platform inbox ISV filter bar.
+type ISVTab struct {
+	OrgID       string
+	DisplayName string // title-cased OrgID
+	OpenCount   int    // non-resolved bundle count
 }
 
 // InsertBundle inserts a new bundle record including its raw file bytes.
@@ -332,6 +382,103 @@ func (db *DB) InsertBundleWithTime(ctx context.Context, b Bundle) error {
 	return err
 }
 
+// GetPlatformInbox returns all bundles across all orgs joined with analysis data,
+// ordered by uploaded_at DESC. Used for the Marcus/Replicated platform dashboard.
+func (db *DB) GetPlatformInbox(ctx context.Context) ([]InboxItem, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT b.id, b.org_id, COALESCE(b.customer_name, ''),
+		        COALESCE(a.severity_score, 0),
+		        COALESCE(a.triage_json, ''),
+		        a.id IS NOT NULL,
+		        b.status, b.uploaded_at
+		 FROM bundles b
+		 LEFT JOIN analyses a ON b.id = a.bundle_id
+		 ORDER BY b.uploaded_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []InboxItem
+	for rows.Next() {
+		var item InboxItem
+		var triageJSON string
+		if err := rows.Scan(
+			&item.ID, &item.OrgID, &item.CustomerName,
+			&item.SeverityScore, &triageJSON,
+			&item.HasAnalysis, &item.Status, &item.UploadedAt,
+		); err != nil {
+			return nil, err
+		}
+		if triageJSON != "" {
+			item.TopIssue = extractTopIssue(triageJSON)
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// GetPlatformISVTabs returns one tab entry per distinct org in the bundles table,
+// with the count of open (non-resolved) bundles for each.
+func (db *DB) GetPlatformISVTabs(ctx context.Context) ([]ISVTab, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT org_id,
+		        COUNT(*) FILTER (WHERE status != 'resolved') AS open_count
+		 FROM bundles
+		 GROUP BY org_id
+		 ORDER BY org_id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tabs []ISVTab
+	for rows.Next() {
+		var t ISVTab
+		if err := rows.Scan(&t.OrgID, &t.OpenCount); err != nil {
+			return nil, err
+		}
+		if len(t.OrgID) > 0 {
+			t.DisplayName = strings.ToUpper(t.OrgID[:1]) + t.OrgID[1:]
+		}
+		tabs = append(tabs, t)
+	}
+	return tabs, rows.Err()
+}
+
+// GetBundleStatus returns the current status of a bundle.
+func (db *DB) GetBundleStatus(ctx context.Context, bundleID string) (string, error) {
+	var status string
+	err := db.QueryRowContext(ctx,
+		`SELECT status FROM bundles WHERE id = $1`, bundleID,
+	).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return status, err
+}
+
+// SetBundleStatus updates the workflow status for a bundle.
+// Valid values: "new", "in_review", "resolved".
+func (db *DB) SetBundleStatus(ctx context.Context, bundleID, status string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE bundles SET status = $1 WHERE id = $2`, status, bundleID,
+	)
+	return err
+}
+
+// GetBundleByIDGlobal returns a bundle by ID without org ownership check.
+// Used by platform users who can view bundles across all ISV orgs.
+func (db *DB) GetBundleByIDGlobal(ctx context.Context, id string) (*Bundle, error) {
+	row := db.QueryRowContext(ctx,
+		`SELECT id, org_id, customer_name, filename, file_size_bytes, sha256, uploaded_by, file_data, uploaded_at
+		 FROM bundles WHERE id = $1`, id,
+	)
+	return scanBundle(row)
+}
+
 // extractTopIssue parses triage JSON and returns the title of the first top issue.
 func extractTopIssue(triageJSON string) string {
 	var result struct {
@@ -346,6 +493,43 @@ func extractTopIssue(triageJSON string) string {
 		return result.TopIssues[0].Title
 	}
 	return ""
+}
+
+// CustomerSummaryRow holds the latest analysis data per customer for an org.
+type CustomerSummaryRow struct {
+	CustomerName  string
+	SeverityScore int
+	ClusterHealth string
+}
+
+// GetCustomerSummaries returns one row per customer for an org using the most
+// recent bundle's analysis data, ordered alphabetically by customer name.
+func (db *DB) GetCustomerSummaries(ctx context.Context, orgID string) ([]CustomerSummaryRow, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT DISTINCT ON (b.customer_name)
+		        b.customer_name,
+		        COALESCE(a.severity_score, 0),
+		        COALESCE(a.cluster_health, '')
+		 FROM bundles b
+		 LEFT JOIN analyses a ON b.id = a.bundle_id
+		 WHERE b.org_id = $1 AND b.customer_name IS NOT NULL AND b.customer_name <> ''
+		 ORDER BY b.customer_name, b.uploaded_at DESC`,
+		orgID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []CustomerSummaryRow
+	for rows.Next() {
+		var item CustomerSummaryRow
+		if err := rows.Scan(&item.CustomerName, &item.SeverityScore, &item.ClusterHealth); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

@@ -101,8 +101,10 @@ func main() {
 	// Customer detail page
 	mux.HandleFunc("GET /customers/{customerSlug}", h.HandleCustomerDetail)
 
-	// Bundle history and download
+	// Bundle history, detail, download, and status cycling
 	mux.HandleFunc("GET /bundles", h.HandleBundles)
+	mux.HandleFunc("GET /bundles/{id}", h.HandleBundleDetail)
+	mux.HandleFunc("PATCH /bundles/{id}/status", h.HandleBundleStatus)
 	mux.HandleFunc("GET /bundles/{id}/download", h.HandleBundleDownload)
 
 	// Debug (cache inspection — dev only)
