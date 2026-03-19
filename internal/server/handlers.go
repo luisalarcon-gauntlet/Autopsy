@@ -275,6 +275,10 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	h.store.Set(sess.ID, sess)
 	slog.Info("session created", "sessionID", sess.ID, "sha256_prefix", bundleSHA256[:8])
 
+	// Pre-warm the analysis cache immediately so results are ready (or in
+	// flight) by the time the user reaches the report page.
+	go h.preWarmAnalysis(sess.ID, bundleSHA256, bundleDataOrEmpty(sess))
+
 	// Resolve customer name: "__new__" means use the free-text field.
 	customerName := r.FormValue("customer")
 	if customerName == "__new__" {
@@ -1149,6 +1153,64 @@ func (h *Handler) restoreAnalysisCache(sha256Hash string, a *db.Analysis) {
 
 // bundleDataOrEmpty returns the session's parsed BundleData, falling back to
 // an empty struct if parsing failed or hasn't been done yet.
+// preWarmAnalysis runs all three analysis phases in the background and
+// stores their results in the cache.  It is called as a goroutine immediately
+// after a bundle is uploaded so analysis is ready (or well underway) before
+// the user's browser opens the SSE connections on the report page.
+// Each phase checks the cache first, so duplicate uploads or a concurrent SSE
+// request that wins the race won't trigger redundant Claude calls.
+func (h *Handler) preWarmAnalysis(sessionID, sha256 string, data *bundle.BundleData) {
+	ctx := context.Background()
+	log := func(phase, msg string, args ...any) {
+		slog.Info("pre-warm "+phase+": "+msg, append([]any{"sessionID", sessionID}, args...)...)
+	}
+
+	// Phase 1 — triage
+	if cached, hit := h.cache.Get(sha256); !hit || cached.Triage == nil {
+		log("triage", "starting")
+		result, err := analysis.RunTriage(ctx, h.client, data, h.cfg.StubMode)
+		if err != nil {
+			slog.Warn("pre-warm triage failed", "sessionID", sessionID, "err", err)
+		} else {
+			h.upsertCache(sha256, func(c *analysis.CachedResult) { c.Triage = result })
+			log("triage", "done", "score", result.SeverityScore)
+		}
+	} else {
+		log("triage", "cache hit, skipping")
+	}
+
+	// Phase 2 — timeline
+	if cached, hit := h.cache.Get(sha256); !hit || cached.Timeline == nil {
+		log("timeline", "starting")
+		result, err := analysis.RunTimeline(ctx, h.client, data, h.cfg.StubMode)
+		if err != nil {
+			slog.Warn("pre-warm timeline failed", "sessionID", sessionID, "err", err)
+		} else {
+			h.upsertCache(sha256, func(c *analysis.CachedResult) { c.Timeline = result })
+			log("timeline", "done", "events", len(result.Events))
+		}
+	} else {
+		log("timeline", "cache hit, skipping")
+	}
+
+	// Phase 3 — RCA
+	if cached, hit := h.cache.Get(sha256); !hit || cached.RCAText == "" {
+		log("rca", "starting")
+		var buf strings.Builder
+		if err := analysis.RunRCA(ctx, h.client, data, h.cfg.StubMode, &buf); err != nil {
+			slog.Warn("pre-warm RCA failed", "sessionID", sessionID, "err", err)
+		} else {
+			text := buf.String()
+			h.upsertCache(sha256, func(c *analysis.CachedResult) { c.RCAText = text })
+			log("rca", "done", "chars", len(text))
+		}
+	} else {
+		log("rca", "cache hit, skipping")
+	}
+
+	slog.Info("pre-warm complete", "sessionID", sessionID)
+}
+
 func bundleDataOrEmpty(sess *session.Session) *bundle.BundleData {
 	if sess.BundleData != nil {
 		return sess.BundleData

@@ -29,33 +29,76 @@
       padding: 3rem 2.5rem;
     }
     @media (max-width: 767px) {
-      body > .split-layout {
-        flex-direction: column !important;
-      }
-      .panel-left, .panel-right {
-        width: 100% !important;
-        min-height: auto;
-      }
+      /* 1 ── Stack panels vertically */
+      body > .split-layout { flex-direction: column !important; }
+
+      /* 2 ── Left panel: compact branding strip instead of full-height panel */
       .panel-left {
-        padding: 2.5rem 1.5rem;
+        width: 100% !important;
+        min-height: 0;
+        padding: 1.125rem 1.5rem;
       }
+      /* Lay logo icon + title out as a horizontal row */
+      .panel-left > div {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center;
+        gap: 0.75rem;
+        max-width: none !important;
+        text-align: left !important;
+        justify-content: center;
+      }
+      /* Logo wrapper: remove the bottom margin it has on desktop */
+      .panel-left > div > div:first-of-type {
+        margin-bottom: 0 !important;
+        flex-shrink: 0;
+      }
+      /* Logo box: scale down slightly */
+      .panel-left > div > div:first-of-type > div {
+        width: 38px !important;
+        height: 38px !important;
+        border-radius: 10px !important;
+      }
+      .panel-left > div > div:first-of-type svg {
+        width: 20px !important;
+        height: 20px !important;
+      }
+      /* Title: compact */
+      .panel-left h1 { font-size: 1.25rem !important; margin: 0 !important; }
+      /* Hide subtitle, divider rule, bullet points, footer — not needed on mobile */
+      .panel-left p  { display: none !important; }
+      .panel-left ul { display: none !important; }
+      /* Divider is the last <div> inside the inner container */
+      .panel-left > div > div:last-of-type { display: none !important; }
+
+      /* 3 ── Right panel: main content area on mobile */
       .panel-right {
-        padding: 2rem 1rem;
+        width: 100% !important;
+        min-height: 0;
+        padding: 1.75rem 1.25rem 2.5rem;
+        justify-content: flex-start;
+        align-items: stretch;
       }
-      /* Stack all account card rows vertically, full width */
+      /* Tighten the heading block */
+      .panel-right h2 { font-size: 1.25rem !important; }
+      /* Reduce the large gap below the subtitle */
+      .panel-right > div > p:nth-child(2) { margin-bottom: 1.25rem !important; }
+
+      /* Card rows: stack vertically */
       .panel-right > div > div[style*="display: flex"] {
         flex-direction: column !important;
+        gap: 0.75rem !important;
+        margin-bottom: 1rem !important;
       }
-      /* All login forms / cards fill full width */
+      /* Each form (and its button) fills full width */
       .panel-right form {
         max-width: 100% !important;
         min-width: 0 !important;
         flex: none !important;
+        width: 100% !important;
       }
-      /* Comfortable touch targets on login buttons */
-      .panel-right button[type="submit"] {
-        min-height: 52px;
-      }
+      /* Touch-friendly card buttons */
+      .panel-right button[type="submit"] { min-height: 56px; }
     }
   </style>
 </head>
