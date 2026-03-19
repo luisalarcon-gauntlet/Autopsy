@@ -41,11 +41,13 @@ Format your response as structured markdown with these EXACT sections in this EX
 ## Root Cause
 ## Evidence
 ## Fix Steps
+## Patch Files
 ## Prevention
 
 Always begin with the TL;DR section exactly as shown above before any other content.
 In Fix Steps, always provide exact kubectl commands. Be specific about namespace and resource names.
-In Evidence, cite specific pod names, event reasons, and log lines from the data provided.`
+In Evidence, cite specific pod names, event reasons, and log lines from the data provided.
+In Patch Files, provide at least one Kubernetes YAML manifest per fix as a yaml code block that can be applied directly with kubectl apply -f.`
 
 // BuildTriagePrompt constructs the user-turn prompt for Phase 1 triage analysis.
 // It serializes the BundleData as JSON and appends the required output schema.
@@ -117,7 +119,8 @@ Produce a structured markdown report with the following sections in order:
 2. ## Root Cause — What is the primary failure and why did it occur?
 3. ## Evidence — Specific pod names, event reasons, log lines, and metrics from the bundle that support your conclusion.
 4. ## Fix Steps — Numbered list of exact kubectl commands to remediate the issues.
-5. ## Prevention — How to prevent recurrence.
+5. ## Patch Files — At least one Kubernetes YAML manifest per fix, each in its own yaml code block, ready for kubectl apply -f.
+6. ## Prevention — How to prevent recurrence.
 
 Be specific. Reference actual pod names, namespaces, and error messages from the bundle.`, string(dataJSON))
 }
