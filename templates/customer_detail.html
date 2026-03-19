@@ -2,119 +2,130 @@
 
 {{define "title"}}Autopsy — {{.CustomerName}} · {{.User.Org}}{{end}}
 
+{{define "main_class"}}flex w-full p-0{{end}}
+
 {{define "content"}}
-<div class="px-8 py-6">
 
-  <!-- Breadcrumb + Header -->
-  <div class="mb-8 flex items-start justify-between gap-6">
-    <div>
-      <div class="flex items-center gap-2 text-base text-gray-500 dark:text-gray-400 mb-2">
-        <a href="/" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{{.User.Org}}</a>
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-        <span class="text-gray-700 dark:text-gray-300">{{.CustomerName}}</span>
-      </div>
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{.CustomerName}}</h1>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-        {{.TotalBundles}} bundle{{if ne .TotalBundles 1}}s{{end}} analyzed
-      </p>
-    </div>
+<!-- ── Left sidebar ─────────────────────────────────────────────── -->
+<aside class="w-64 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+  <div class="flex flex-col flex-1 p-6">
 
-    {{if .HasBundles}}
-    <div class="text-right flex-shrink-0">
-      {{if eq .LatestHealth "critical"}}
-      <div class="flex items-baseline gap-1.5 justify-end">
-        <span class="text-5xl font-black text-red-600 dark:text-red-400">{{.LatestSeverity}}</span>
-        <span class="text-lg text-red-400 dark:text-red-500 font-medium">/ 100</span>
-      </div>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">latest severity &mdash; <span class="text-red-500 font-medium">critical</span></p>
-      {{else if eq .LatestHealth "warning"}}
-      <div class="flex items-baseline gap-1.5 justify-end">
-        <span class="text-5xl font-black text-amber-500 dark:text-amber-400">{{.LatestSeverity}}</span>
-        <span class="text-lg text-amber-400 dark:text-amber-500 font-medium">/ 100</span>
-      </div>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">latest severity &mdash; <span class="text-amber-500 font-medium">warning</span></p>
-      {{else}}
-      <div class="flex items-baseline gap-1.5 justify-end">
-        <span class="text-5xl font-black text-green-600 dark:text-green-400">{{.LatestSeverity}}</span>
-        <span class="text-lg text-green-400 dark:text-green-500 font-medium">/ 100</span>
-      </div>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">latest severity &mdash; <span class="text-green-600 font-medium">healthy</span></p>
-      {{end}}
-    </div>
-    {{end}}
-  </div>
-
-  <!-- Severity Trend Chart -->
-  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 mb-6">
-    <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-6">Severity Trend</h2>
-    {{if not .HasBundles}}
-    <div class="flex flex-col items-center justify-center py-16 text-center">
-      <svg class="w-10 h-10 text-gray-200 dark:text-gray-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 mb-6">
+      <a href="/" class="hover:text-blue-500 dark:hover:text-blue-400 transition-colors">{{.User.Org}}</a>
+      <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
       </svg>
-      <p class="text-sm text-gray-500 dark:text-gray-400 font-medium">No bundles yet — upload the first one</p>
-      <a href="/upload"
-         class="mt-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
-        Upload Bundle
-      </a>
+      <span class="text-gray-600 dark:text-gray-300 truncate">{{.CustomerName}}</span>
     </div>
-    {{else}}
-    <div style="min-height:300px; position:relative;">
-      <canvas id="severity-chart"></canvas>
+
+    <!-- Customer name -->
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white leading-tight mb-1">{{.CustomerName}}</h1>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mb-8">
+      {{.TotalBundles}} bundle{{if ne .TotalBundles 1}}s{{end}} analyzed
+    </p>
+
+    <!-- Severity score -->
+    {{if .HasBundles}}
+    <div class="mb-2">
+      {{if eq .LatestHealth "critical"}}
+      <div class="text-7xl font-black leading-none text-red-600 dark:text-red-400 tabular-nums">{{.LatestSeverity}}</div>
+      <div class="flex items-baseline gap-1 mt-1">
+        <span class="text-sm text-gray-400 dark:text-gray-500">/ 100</span>
+        <span class="ml-1 text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide">critical</span>
+      </div>
+      {{else if eq .LatestHealth "warning"}}
+      <div class="text-7xl font-black leading-none text-amber-500 dark:text-amber-400 tabular-nums">{{.LatestSeverity}}</div>
+      <div class="flex items-baseline gap-1 mt-1">
+        <span class="text-sm text-gray-400 dark:text-gray-500">/ 100</span>
+        <span class="ml-1 text-xs font-semibold text-amber-500 dark:text-amber-400 uppercase tracking-wide">warning</span>
+      </div>
+      {{else}}
+      <div class="text-7xl font-black leading-none text-green-600 dark:text-green-400 tabular-nums">{{.LatestSeverity}}</div>
+      <div class="flex items-baseline gap-1 mt-1">
+        <span class="text-sm text-gray-400 dark:text-gray-500">/ 100</span>
+        <span class="ml-1 text-xs font-semibold text-green-600 dark:text-green-500 uppercase tracking-wide">healthy</span>
+      </div>
+      {{end}}
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">latest bundle</p>
     </div>
     {{end}}
-  </div>
 
-  <!-- Bundle History List -->
-  {{if .HasBundles}}
-  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Bundle History</h2>
+    <!-- Upload button pushed to bottom -->
+    <div class="mt-auto pt-6">
       <a href="/upload"
-         class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+         class="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
         Upload Bundle
       </a>
     </div>
-    <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+
+  </div>
+</aside>
+
+<!-- ── Right main area ──────────────────────────────────────────── -->
+<div class="flex-1 min-w-0 bg-gray-50 dark:bg-gray-900 p-6 flex flex-col gap-5">
+
+  <!-- Trend chart -->
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-5 uppercase tracking-wide">Severity Trend</h2>
+    {{if not .HasBundles}}
+    <div class="flex flex-col items-center justify-center py-14 text-center">
+      <svg class="w-9 h-9 text-gray-200 dark:text-gray-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      <p class="text-sm text-gray-500 dark:text-gray-400 font-medium">No bundles yet</p>
+      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Upload one to start tracking severity over time</p>
+    </div>
+    {{else}}
+    <div style="height:220px; position:relative;">
+      <canvas id="severity-chart"></canvas>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- Bundle history -->
+  {{if .HasBundles}}
+  <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+      <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Bundle History</h2>
+    </div>
+    <ul class="divide-y divide-gray-100 dark:divide-gray-700/60">
       {{range .Bundles}}
-      <li class="px-6 py-5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-        <!-- Row 1: filename + action -->
-        <div class="flex items-start justify-between gap-6">
-          <span class="font-mono text-sm font-medium text-gray-800 dark:text-gray-200 break-all leading-relaxed">{{.Filename}}</span>
+      <li class="px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+        <div class="flex items-start justify-between gap-4">
+          <span class="font-mono text-xs text-gray-600 dark:text-gray-400 break-all leading-relaxed">{{.Filename}}</span>
           <div class="flex-shrink-0 mt-0.5">
             {{if .HasAnalysis}}
-            <a href="/report/{{.ID}}" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap">View analysis →</a>
+            <a href="/report/{{.ID}}" class="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap">View →</a>
             {{else}}
-            <span class="text-sm text-gray-400 whitespace-nowrap">Pending</span>
+            <span class="text-xs text-gray-400 whitespace-nowrap">Pending</span>
             {{end}}
           </div>
         </div>
-        <!-- Row 2: top issue -->
         {{if .TopIssue}}
-        <p class="text-sm text-gray-700 dark:text-gray-300 mt-2 leading-snug">{{.TopIssue}}</p>
+        <p class="text-sm text-gray-800 dark:text-gray-200 mt-1.5 leading-snug">{{.TopIssue}}</p>
         {{end}}
-        <!-- Row 3: date + severity on same line -->
-        <div class="flex items-center gap-3 mt-2.5">
+        <div class="flex items-center gap-3 mt-2">
           <span class="text-xs text-gray-400 dark:text-gray-500">{{.FormatDate}}</span>
           {{if not .HasAnalysis}}
-          <span class="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Analyzing…</span>
+          <span class="text-xs text-gray-400 animate-pulse">Analyzing…</span>
           {{else if ge .SeverityScore 70}}
-          <span class="inline-flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
             <span class="text-xs font-semibold text-red-600 dark:text-red-400">{{.SeverityScore}}</span>
             <span class="text-xs text-red-500 dark:text-red-400">critical</span>
           </span>
           {{else if ge .SeverityScore 40}}
-          <span class="inline-flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
             <span class="text-xs font-semibold text-amber-500 dark:text-amber-400">{{.SeverityScore}}</span>
             <span class="text-xs text-amber-500 dark:text-amber-400">warning</span>
           </span>
           {{else}}
-          <span class="inline-flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
             <span class="text-xs font-semibold text-green-600 dark:text-green-400">{{.SeverityScore}}</span>
             <span class="text-xs text-green-500 dark:text-green-400">healthy</span>
@@ -146,8 +157,8 @@
   }
 
   var isDark = document.documentElement.classList.contains('dark');
-  var gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
-  var tickColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
+  var gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+  var tickColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
 
   var ctx = document.getElementById('severity-chart').getContext('2d');
   new Chart(ctx, {
@@ -156,16 +167,17 @@
       labels: labels,
       datasets: [{
         data: scores,
-        borderWidth: 3,
-        tension: 0.3,
+        borderWidth: 2.5,
+        tension: 0.35,
         fill: false,
         segment: {
           borderColor: function(ctx) { return scoreColor(ctx.p1.parsed.y); }
         },
         pointBackgroundColor: function(ctx) { return scoreColor(ctx.dataset.data[ctx.dataIndex]); },
-        pointBorderColor: function(ctx) { return scoreColor(ctx.dataset.data[ctx.dataIndex]); },
-        pointRadius: singlePoint ? 10 : 6,
-        pointHoverRadius: 8,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: singlePoint ? 8 : 5,
+        pointHoverRadius: 7,
         showLine: !singlePoint,
       }]
     },
@@ -175,6 +187,12 @@
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: isDark ? 'rgba(30,41,59,0.95)' : 'rgba(255,255,255,0.95)',
+          titleColor: isDark ? '#e2e8f0' : '#1e293b',
+          bodyColor: isDark ? '#94a3b8' : '#475569',
+          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+          borderWidth: 1,
+          padding: 10,
           callbacks: {
             label: function(ctx) { return 'Severity: ' + ctx.parsed.y; }
           }
@@ -185,19 +203,18 @@
           min: 0,
           max: 100,
           grid: { color: gridColor },
+          border: { display: false },
           ticks: {
             color: tickColor,
             stepSize: 25,
-            font: { size: 13 },
+            font: { size: 11 },
             callback: function(v) { return v; }
           }
         },
         x: {
           grid: { color: gridColor },
-          ticks: {
-            color: tickColor,
-            font: { size: 13 }
-          }
+          border: { display: false },
+          ticks: { color: tickColor, font: { size: 11 } }
         }
       }
     }
