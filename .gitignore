@@ -8,6 +8,8 @@ autopsy.exe
 # Bundle files (can be large)
 *.tar.gz
 *.tgz
+# ...except the small synthetic seed bundles embedded in the binary
+!internal/seed/testdata/*.tar.gz
 
 # Temp directories
 tmp/
