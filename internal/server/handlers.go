@@ -303,6 +303,9 @@ func (h *Handler) HandleReport(w http.ResponseWriter, r *http.Request) {
 	if user, ok := auth.FromContext(r.Context()); ok {
 		data["User"] = user
 	}
+	if sess.BundleData != nil && len(sess.BundleData.LogExcerpts) > 0 {
+		data["LogExcerpts"] = sess.BundleData.LogExcerpts
+	}
 	if err := h.reportTmpl.ExecuteTemplate(w, "report.html", data); err != nil {
 		slog.Error("template execution failed", "template", "report.html", "err", err)
 	}
@@ -972,15 +975,24 @@ func (h *Handler) HandleBundleDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 // restoreSessionFromDB reconstructs an in-memory session from a DB bundle record,
-// re-extracts the bundle, and loads cached analysis results.
-// Returns nil if extraction fails.
+// re-extracts the bundle (when file data is present), and loads cached analysis results.
+// Seeded entries have no file data; a session is still created so their cached
+// analysis results can be served from the report page.
 func (h *Handler) restoreSessionFromDB(ctx context.Context, b *db.Bundle, orgID string) *session.Session {
-	tmpDir, err := bundle.Extract(ctx, bytes.NewReader(b.FileData), bundle.MaxTotalSizeBytes)
-	if err != nil {
-		slog.Warn("restoreSession: extraction failed", "bundleID", b.ID, "err", err)
-		return nil
+	var tmpDir string
+	var bundleData *bundle.BundleData
+
+	if len(b.FileData) > 0 {
+		var err error
+		tmpDir, err = bundle.Extract(ctx, bytes.NewReader(b.FileData), bundle.MaxTotalSizeBytes)
+		if err != nil {
+			slog.Warn("restoreSession: extraction failed, continuing without bundle data", "bundleID", b.ID, "err", err)
+		} else {
+			bundleData, _ = bundle.Parse(ctx, tmpDir)
+		}
+	} else {
+		slog.Info("restoreSession: no file data (seeded entry), creating stub session", "bundleID", b.ID)
 	}
-	bundleData, _ := bundle.Parse(ctx, tmpDir)
 
 	sess := &session.Session{
 		ID:           b.ID,

@@ -273,13 +273,60 @@
 
       {{/* ── LOGS ── */}}
       <div id="section-logs" class="hidden">
+        {{if .LogExcerpts}}
+        <div class="flex gap-4" style="height:calc(100vh - 14rem)">
+
+          {{/* Container list */}}
+          <div class="w-52 flex-shrink-0 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+              <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Containers</h3>
+            </div>
+            <nav class="flex-1 overflow-y-auto py-1" aria-label="Container logs">
+              {{range $i, $ex := .LogExcerpts}}
+              <button onclick="showLogPanel({{$i}})" id="log-tab-{{$i}}"
+                      class="log-tab w-full text-left px-3 py-2.5 border-l-2 transition-colors {{if eq $i 0}}border-red-500 bg-red-50 dark:bg-red-900/20{{else}}border-transparent hover:bg-gray-50 dark:hover:bg-gray-800{{end}}">
+                <div class="text-xs font-mono font-medium text-gray-800 dark:text-gray-200 truncate" title="{{$ex.PodName}}">{{$ex.PodName}}</div>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <span class="text-xs text-gray-400 dark:text-gray-500 truncate flex-1">{{$ex.Container}}</span>
+                  {{if gt $ex.ErrorCount 0}}
+                  <span class="flex-shrink-0 text-xs font-bold bg-red-500 text-white rounded-full min-w-[1rem] h-4 px-1.5 leading-none flex items-center justify-center">{{$ex.ErrorCount}}</span>
+                  {{end}}
+                </div>
+              </button>
+              {{end}}
+            </nav>
+          </div>
+
+          {{/* Log viewer */}}
+          <div class="flex-1 min-w-0 bg-gray-900 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+            {{range $i, $ex := .LogExcerpts}}
+            <div id="log-panel-{{$i}}" class="log-panel-content {{if eq $i 0}}flex{{else}}hidden{{end}} flex-col h-full overflow-hidden">
+              <div class="px-5 py-2.5 border-b border-gray-800 flex items-center gap-2 flex-shrink-0 bg-gray-950">
+                <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span class="text-xs font-mono text-gray-400 truncate">{{$ex.Namespace}} / {{$ex.PodName}} / {{$ex.Container}}</span>
+                <div class="ml-auto flex-shrink-0 flex items-center gap-2">
+                  {{if $ex.Truncated}}<span class="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">truncated</span>{{end}}
+                  {{if gt $ex.ErrorCount 0}}<span class="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full">{{$ex.ErrorCount}} errors</span>{{end}}
+                </div>
+              </div>
+              <pre id="log-pre-{{$i}}" class="log-pre flex-1 overflow-auto p-5 text-xs font-mono leading-relaxed text-gray-300 whitespace-pre-wrap break-words">{{range $ex.Lines}}{{.}}
+{{end}}</pre>
+            </div>
+            {{end}}
+          </div>
+
+        </div>
+        {{else}}
         <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
           <svg class="w-10 h-10 text-gray-200 dark:text-gray-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
-          <p class="text-sm font-medium text-gray-400">Log browsing coming soon</p>
-          <p class="text-xs text-gray-300 dark:text-gray-600 mt-1">View raw container logs from the bundle</p>
+          <p class="text-sm font-medium text-gray-400">No container logs in this bundle</p>
+          <p class="text-xs text-gray-300 dark:text-gray-600 mt-1">Logs are captured from pods with failures or restarts</p>
         </div>
+        {{end}}
       </div>
 
       {{/* ── FIX STEPS ── */}}
@@ -595,6 +642,45 @@ function addCopyButtons(container) {
     });
   });
 }
+
+// ── Log browser ────────────────────────────────────────────────────────────
+function showLogPanel(idx) {
+  var tabs = document.querySelectorAll('.log-tab');
+  var panels = document.querySelectorAll('.log-panel-content');
+  tabs.forEach(function(tab, i) {
+    if (i === idx) {
+      tab.classList.add('border-red-500', 'bg-red-50', 'dark:bg-red-900/20');
+      tab.classList.remove('border-transparent');
+    } else {
+      tab.classList.remove('border-red-500', 'bg-red-50', 'dark:bg-red-900/20');
+      tab.classList.add('border-transparent');
+    }
+  });
+  panels.forEach(function(panel, i) {
+    if (i === idx) {
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+    } else {
+      panel.classList.remove('flex');
+      panel.classList.add('hidden');
+    }
+  });
+}
+
+// Highlight error lines in all log panels on load.
+(function() {
+  var keywords = ['ERROR', 'FATAL', 'PANIC', 'EXCEPTION', 'CRITICAL'];
+  document.querySelectorAll('.log-pre').forEach(function(pre) {
+    var lines = pre.innerHTML.split('\n');
+    pre.innerHTML = lines.map(function(line) {
+      var upper = line.toUpperCase();
+      if (keywords.some(function(kw) { return upper.indexOf(kw) !== -1; })) {
+        return '<span class="text-red-400 font-medium">' + line + '</span>';
+      }
+      return line;
+    }).join('\n');
+  });
+})();
 
 // ── Suggested questions ───────────────────────────────────────────────────
 function loadSuggestions() {
